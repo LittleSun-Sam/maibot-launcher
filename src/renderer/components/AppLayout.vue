@@ -197,10 +197,12 @@
       -->
       <div class="win-tools">
         <!--
-          ★ 形「帮助」pill：点开新手引导抽屉（功能没变，只是形态照目标图）。
-          徽标（未开始 / 2/10 / ✓）会挂在文字后面。
+          ★ 形「帮助」pill：点开新手引导抽屉。
+          2026-09-28 按用户要求**暂时收起入口**：整块由 GUIDE_ENTRY_VISIBLE 控制。
+          教程本身没删（抽屉组件、步骤定义、进度存储都在），改回 true 即恢复。
         -->
         <button
+          v-if="GUIDE_ENTRY_VISIBLE"
           type="button"
           class="help-pill"
           data-testid="titlebar-help"
@@ -535,6 +537,7 @@ import {
   dismissAlert,
   dismissOnboarding,
   focusLogs,
+  GUIDE_ENTRY_VISIBLE,
   hideToTray,
   initOnboarding,
   loadAppInfo,

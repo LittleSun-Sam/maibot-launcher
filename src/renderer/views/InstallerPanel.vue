@@ -139,7 +139,7 @@
 
               <div class="dep-actions">
                 <PillButton
-                  v-for="a in s.actions"
+                  v-for="a in visibleDeployActions(s.actions)"
                   :key="a.key"
                   :variant="a.primary ? 'solid' : 'ghost'"
                   size="sm"
@@ -503,6 +503,7 @@ import {
   detectAll,
   getDiskSpace,
   installDependencies,
+  GUIDE_ENTRY_VISIBLE,
   installMaiBot,
   installSnowluma,
   isPortOpen,
@@ -1303,6 +1304,18 @@ function unmarkDeployDone(s) {
  * 每个 kind 都在这里显式列出，没有 default 兜底 ——
  * 兜底会把"新加了动作却忘了接线"变成静默无反应（本项目踩过这个坑）。
  */
+/**
+ * 部署流程的按钮列表：教程入口收起时，把「打开新手引导」这个动作**从界面上摘掉**。
+ *
+ * 只过滤显示，不改 deploy-flow.js 的步骤定义（那是纯函数，另有测试断言其分支），
+ * 所以恢复入口时把 GUIDE_ENTRY_VISIBLE 改回 true 即可，这一步不用动。
+ * @param {Array<{kind?:string}>} actions
+ */
+function visibleDeployActions(actions) {
+  const list = Array.isArray(actions) ? actions : [];
+  return GUIDE_ENTRY_VISIBLE ? list : list.filter((a) => a?.kind !== 'open-guide');
+}
+
 async function runDeployAction(a) {
   if (deployBusy.value) return;
   deployBusy.value = a.key;

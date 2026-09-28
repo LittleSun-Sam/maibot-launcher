@@ -720,13 +720,18 @@ function confettiStyle(i) {
     opacity: 0;
   }
 }
+/*
+  抽屉过渡：与全项目二级窗口统一 —— 时长 --dur-base(180ms) + 缓动 --ease-standard。
+  遮罩只淡入淡出；面板按"抽屉的方向语言"从右侧轻推入位（16px，幅度与居中式
+  弹窗的 translateY(8px) 相当，观感是同一套动作）。
+*/
 .wiz-enter-active,
 .wiz-leave-active {
-  transition: opacity var(--dur-base) ease;
+  transition: opacity var(--dur-base) var(--ease-standard);
 }
 .wiz-enter-active .wiz,
 .wiz-leave-active .wiz {
-  transition: transform var(--dur-slow) ease;
+  transition: transform var(--dur-base) var(--ease-standard);
 }
 .wiz-enter-from,
 .wiz-leave-to {
@@ -734,6 +739,6 @@ function confettiStyle(i) {
 }
 .wiz-enter-from .wiz,
 .wiz-leave-to .wiz {
-  transform: translateX(24px);
+  transform: translateX(16px);
 }
 </style>

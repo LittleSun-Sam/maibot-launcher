@@ -519,21 +519,29 @@ function releaseAssetUrl(owner, repo, tag, fileName) {
  * ========================================================================== */
 
 /**
- * 解析版本字符串 → { major, minor, patch, pre:[] }
- * 接受 'v' 前缀、缺省段（'2.1' → 2.1.0）、预发布（'-beta.1'）、
- * 构建元数据（'+sha'，semver 规定它**不参与**比较，所以先剥掉再看其余部分）。
+ * 解析版本字符串 → { parts:[...], major, minor, patch, pre:[] }
+ * 接受 'v' 前缀、缺省段（'2.1' → 2.1.0）、**任意段数**（'2.1.1.1' → [2,1,1,1]）、
+ * 预发布（'-beta.1'）、构建元数据（'+sha'，semver 规定它**不参与**比较，所以先剥掉再看其余部分）。
  * 无法解析时返回 null（调用方必须如实报"无法比较"，不许猜）。
+ *
+ * ★ 为什么必须支持四段（2026-09-28 实测踩到）：
+ *   旧正则只认三段 `^(\d+)(?:\.(\d+))?(?:\.(\d+))?...$`，于是 '2.1.1.1' 解析结果
+ *   直接是 null → compareVersions 返回 NaN → 界面按"无法比较"处理。
+ *   后果不是显示难看，而是**升级功能整个失效**：用户端看不到 2.1.1.1 这次更新。
+ *   major/minor/patch 三个字段保留（前三位语义不变），调用方与测试都不用改。
  */
 function parseVersion(text) {
   const raw = String(text || '').trim().replace(/^[vV]/, '').split('+')[0];
   if (!raw) return null;
-  const m = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?$/.exec(raw);
+  const m = /^(\d+(?:\.\d+)*)(?:-([0-9A-Za-z.-]+))?$/.exec(raw);
   if (!m) return null;
+  const parts = m[1].split('.').map((n) => Number(n));
   return {
-    major: Number(m[1]),
-    minor: Number(m[2] || 0),
-    patch: Number(m[3] || 0),
-    pre: m[4] ? m[4].split('.').filter(Boolean) : [],
+    parts,
+    major: parts[0],
+    minor: parts[1] || 0,
+    patch: parts[2] || 0,
+    pre: m[2] ? m[2].split('.').filter(Boolean) : [],
     raw
   };
 }
@@ -565,14 +573,18 @@ function comparePre(a, b) {
 
 /**
  * 比较两个版本。
+ * 逐段比较，缺的段按 0 处理 —— 于是 '2.1.1' 与 '2.1.1.0' 相等、'2.1.1.1' 大于 '2.1.1'。
  * @returns {number} a>b → 1，a<b → -1，相等 → 0；任一无法解析 → NaN
  */
 function compareVersions(a, b) {
   const pa = parseVersion(a);
   const pb = parseVersion(b);
   if (!pa || !pb) return NaN;
-  for (const key of ['major', 'minor', 'patch']) {
-    if (pa[key] !== pb[key]) return pa[key] > pb[key] ? 1 : -1;
+  const len = Math.max(pa.parts.length, pb.parts.length);
+  for (let i = 0; i < len; i += 1) {
+    const x = pa.parts[i] || 0;
+    const y = pb.parts[i] || 0;
+    if (x !== y) return x > y ? 1 : -1;
   }
   return comparePre(pa.pre, pb.pre);
 }

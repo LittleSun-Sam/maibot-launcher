@@ -1963,35 +1963,34 @@ onMounted(() => {
   box-shadow: var(--modal-shadow);
 }
 
-/* 弹窗过渡：打开时缩放 + 上浮 + 淡入，关闭时快速淡出 */
-.picker-enter-from .modal {
+/*
+  弹窗过渡：与全项目二级窗口统一 —— 时长 --dur-base(180ms) + 缓动 --ease-standard。
+  打开：遮罩淡入 + 面板轻微上浮/缩放；关闭：反向（比打开略短的感觉来自同一时长，
+  不再像旧版那样"进 260ms 带过冲、出 180ms"，两下不同步）。
+  旧写法把 transition 声明挂在 enter-from / leave-to 上（那里不是过渡生效的位置），
+  而且只给 .modal 写了 from/to、遮罩没有任何状态，于是遮罩实际上是"瞬间出现"的。
+*/
+.picker-enter-from,
+.picker-leave-to {
   opacity: 0;
-  transform: translateY(12px) scale(0.94);
 }
 
-.picker-enter-active .modal {
-  transition: opacity var(--dur-slow) ease, transform var(--dur-slow) cubic-bezier(0.2, 0.9, 0.3, 1.2);
-}
-
+.picker-enter-from .modal,
 .picker-leave-to .modal {
   opacity: 0;
-  transform: translateY(6px) scale(0.97);
+  transform: translateY(8px) scale(0.97);
 }
 
-.picker-enter-from {
-  transition: opacity var(--dur-base) ease;
-}
-
-.picker-enter-active {
-  transition: opacity var(--dur-base) ease;
-}
-
-.picker-leave-to {
-  transition: opacity var(--dur-base) ease;
-}
-
+.picker-enter-active,
 .picker-leave-active {
-  transition: opacity var(--dur-base) ease;
+  transition: opacity var(--dur-base) var(--ease-standard);
+}
+
+.picker-enter-active .modal,
+.picker-leave-active .modal {
+  transition:
+    opacity var(--dur-base) var(--ease-standard),
+    transform var(--dur-base) var(--ease-standard);
 }
 
 .m-head {

@@ -210,17 +210,25 @@
     </div>
     </div><!-- /.chat-cols -->
 
-    <!-- 模态框保持为 .chat 的直接子元素，才能覆盖整个面板 -->
-    <div v-if="deleteTarget" class="modal-mask">
-      <div class="modal">
-        <h4>删除会话</h4>
-        <p>确定要删除这个会话吗？此操作不可恢复。</p>
-        <div class="modal-actions">
-          <PillButton variant="ghost" size="sm" @click="deleteTarget = null">取消</PillButton>
-          <PillButton variant="danger" size="sm" @click="confirmDelete">删除</PillButton>
+    <!--
+      模态框保持为 .chat 的直接子元素，才能覆盖整个面板。
+      这里原来**没有任何过渡**（弹窗是硬闪出来的），现在与全项目二级窗口统一：
+      --dur-base(180ms) + --ease-standard，遮罩淡入淡出 + 面板轻微上浮/缩放。
+      :css="animOk" 是窗口不可见时的保命开关，理由见 OverviewPanel.vue 里
+      「过渡的保命开关」一节的实测记录（隐藏窗口没有帧，离场会收不了尾）。
+    -->
+    <Transition name="dlg" :css="animOk">
+      <div v-if="deleteTarget" class="modal-mask">
+        <div class="modal">
+          <h4>删除会话</h4>
+          <p>确定要删除这个会话吗？此操作不可恢复。</p>
+          <div class="modal-actions">
+            <PillButton variant="ghost" size="sm" @click="deleteTarget = null">取消</PillButton>
+            <PillButton variant="danger" size="sm" @click="confirmDelete">删除</PillButton>
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </div>
 </template>
 
@@ -586,7 +594,20 @@ watch(
   scrollBottom
 );
 
+/*
+  过渡的"保命开关"（与 OverviewPanel.vue 同一套，理由见那里的实测记录）：
+  窗口不可见时 Chromium 不产生帧，Vue 的 <Transition> 离场既等不到 transitionend
+  也等不到 nextFrame()，弹窗会"关不掉"。所以隐藏时把 css 关掉（:css="animOk"），
+  元素同步插入/移除；可见时照旧走 180ms 动画。
+*/
+const animOk = ref(true);
+function syncAnimOk() {
+  animOk.value = document.visibilityState === 'visible';
+}
+
 onMounted(async () => {
+  syncAnimOk();
+  document.addEventListener('visibilitychange', syncAnimOk);
   /*
     修正：preload 里从来没有 getMaibotModels 这个方法，
     旧代码调用必然抛错并被空 catch 吞掉，模型列表永远是空的。
@@ -605,6 +626,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', syncAnimOk);
   /* 卸载时终止仍在进行的请求，避免回调写入已销毁的组件状态 */
   if (inflightId.value) abortLlm(inflightId.value);
 });
@@ -1150,5 +1172,34 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
+}
+
+/*
+  弹窗过渡：与全项目二级窗口统一 —— --dur-base(180ms) + --ease-standard。
+  遮罩淡入淡出 + 面板轻微上浮/缩放，和 OverviewPanel 的 .picker-*、
+  OnboardingWizard 的 .wiz-*、UpdateDialog 的自绘动画是同一套时长与缓动。
+  修复前这里完全没有过渡（弹窗硬闪），是这几处里唯一"没动画"的一个。
+*/
+.dlg-enter-from,
+.dlg-leave-to {
+  opacity: 0;
+}
+
+.dlg-enter-from .modal,
+.dlg-leave-to .modal {
+  opacity: 0;
+  transform: translateY(8px) scale(0.97);
+}
+
+.dlg-enter-active,
+.dlg-leave-active {
+  transition: opacity var(--dur-base) var(--ease-standard);
+}
+
+.dlg-enter-active .modal,
+.dlg-leave-active .modal {
+  transition:
+    opacity var(--dur-base) var(--ease-standard),
+    transform var(--dur-base) var(--ease-standard);
 }
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <div class="panel">
+  <div class="panel" :class="{ 'pane-anim': paneAnim }">
     <!--
       顶部横向标签栏。
       旧版（Tauri + React）是「标签栏在顶、内容在下」的形态，本页照这个形态重做：
@@ -945,6 +945,32 @@ const TABS = [
 ];
 
 const tab = ref('appearance');
+
+/*
+  标签切换的入场动画（2026-09-28 按用户要求补上）。
+  ────────────────────────────────────────────────────────────────────────
+  为什么这样写，而不是给内容再套一层 <Transition>：
+    · 内容区是 `<template v-if / v-else-if>` 的一串分支，直接渲染在 .panel 下，
+      而 .panel 是纵向排布（卡片之间的间距由 .panel 的 gap/子元素边距决定）。
+      套一层包裹 div 会把它们变成一个 flex/grid 子项，间距会整体塌掉 ——
+      为了动画改布局不划算。
+    · 所以只改一个类：`.panel.pane-anim > .tip ~ *` 命中"提示条之后的所有内容节点"，
+      标签栏自己不动（否则点一下标签，标签栏也跟着跳）。
+  · 用 animation 而不是 transition：内容是 v-if 直接挂上来的，没有"起始状态"，
+    animation 每次都从头播（先摘类、下一帧加回来，就是让浏览器重新起一次动画）。
+  · 时长/缓动与全项目二级窗口一致：--dur-base(180ms) + --ease-standard。
+    减弱动效由 theme.css 的全局规则统一压到 --dur-fast，这里不用再写一遍。
+*/
+const paneAnim = ref(true);
+let paneRaf = 0;
+watch(tab, () => {
+  paneAnim.value = false;
+  cancelAnimationFrame(paneRaf);
+  paneRaf = requestAnimationFrame(() => {
+    paneAnim.value = true;
+  });
+});
+onBeforeUnmount(() => cancelAnimationFrame(paneRaf));
 
 /**
  * 是否需要吸底保存栏。
@@ -2524,6 +2550,27 @@ watch(tab, () => {
 }
 
 /* --------------------------------------------------------------- 顶部标签栏 */
+
+/*
+  标签切换动画：只作用于「提示条之后的内容节点」，标签栏自身不动。
+  时长与缓动跟全项目二级窗口同一套（--dur-base + --ease-standard），
+  位移压到 6px —— 设置页是"换一屏内容"，不是"弹出一个窗口"，
+  动作幅度大了会显得页面整体在抖。
+*/
+.panel.pane-anim > .tip ~ * {
+  animation: settings-pane-in var(--dur-base) var(--ease-standard);
+}
+
+@keyframes settings-pane-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 
 .tabs {
   display: flex;

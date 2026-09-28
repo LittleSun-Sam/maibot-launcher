@@ -635,9 +635,23 @@ export function onboardingProgress() {
 }
 
 /**
+ * 「新手教程」入口的总开关（2026-09-28 按用户要求暂时收起入口）。
+ *
+ * 注意这里只关**入口**，教程本身一行都没删：步骤定义（onboarding/steps.js）、
+ * 抽屉组件（components/onboarding/OnboardingWizard.vue）、进度存储、
+ * 重来一遍（replayOnboarding）全都还在。关掉的入口有三处：
+ *   ① 标题栏那颗「帮助」pill（AppLayout.vue）
+ *   ② 首次启动自动展开（本文件的 initOnboarding）
+ *   ③ 安装页部署流程里的「打开新手引导」按钮（InstallerPanel.vue）
+ * 三处都读这一个常量，想恢复改回 true 即可，不需要改别的地方。
+ */
+export const GUIDE_ENTRY_VISIBLE = false;
+
+/**
  * 应用启动时调用一次：决定要不要**自动**展开引导。
  *
- * 只影响"自动"，不影响"手动" —— 右上角常驻入口永远可用。
+ * 只影响"自动"，不影响"手动"。入口开关关闭时（GUIDE_ENTRY_VISIBLE=false），
+ * 这里连"自动"也一并关掉 —— 否则用户会在首跑时被推到一个没有入口再打开的抽屉里。
  * @param {number} totalSteps 总步骤数（由步骤定义决定）
  */
 export function initOnboarding(totalSteps) {
@@ -646,9 +660,9 @@ export function initOnboarding(totalSteps) {
 
   const s = onboardingState(total);
   /* 自检环境额外短路：gate 只认 localStorage 标记，这里补上内存标记 */
-  const decision = onboardingSuppressed()
-    ? { open: false, markAutoOpened: false, reason: 'suppressed' }
-    : decideAutoOpen(s);
+  const decision = (GUIDE_ENTRY_VISIBLE && !onboardingSuppressed())
+    ? decideAutoOpen(s)
+    : { open: false, markAutoOpened: false, reason: GUIDE_ENTRY_VISIBLE ? 'suppressed' : 'entry-hidden' };
 
   store.onboardingDoneCount = s.doneCount;
   if (decision.markAutoOpened) lsSet(ONBOARDING_AUTO_OPENED, '1');

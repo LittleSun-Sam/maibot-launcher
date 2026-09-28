@@ -9,15 +9,22 @@
     这里用纯 Node（zlib + 自写 CRC32）真正生成合法的 PNG/ICO，
     不引入任何图像库依赖，二进制可复现。
 
-  图标画的是什么（第一版不是这个，这里记录为什么换）：
+  图标画的是什么（换过两次，这里记录为什么换）：
     第一版是「圆角蓝方块 + 两个圆点眼睛 + 一条横杠嘴」。
     问题是这个图形**没有任何辨识度**：16px 下就是"蓝色方块里有两个点"，
     和一堆聊天软件的默认头像长得一样，而且它和阿麦（麦麦）毫无关系。
 
-    现在的图形是**一根麦穗**（麦麦 = 麦）：
-      · 一条竖茎 + 三对谷粒 + 顶端一粒，纯白剪影，几何对称
-      · 白/蓝对比度足够高，缩到 16px 仍能看出"一株带穗的植物"
-      · 自己画的几何形状，没有照搬任何官方 logo
+    第二版是**一根麦穗**（纯白剪影，自己画的几何形状，没有照搬任何官方 logo）。
+
+    ★ 现在（2026-09-28，按用户要求）：应用图标直接改成用户提供的 **mai.png**，
+      源文件是仓库里的 resources/hero.png（1024×1040、8 位 RGBA），
+      由本脚本自己解码 + 面积平均缩放派生全部帧（icon.ico / icon-*.png / tray）。
+      上面那根麦穗的绘制代码**保留为回退**：源图缺失时仍然能出图标，
+      但正常构建不会走到它（见 main() 里的 frame()）。
+      · 为什么自己写 PNG 解码：图标必须在 npm 装依赖之外可复现生成，
+        项目不引图像库；zlib 本来就在用（写 PNG），读 PNG 只多一个 inflate + 反滤波。
+      · 为什么缩放用面积平均 + 预乘 alpha：1024→16 是 64×65 压 1，双线性会漏采样；
+        透明像素的 RGB 常为 0，不预乘 alpha 会让边缘发黑。
 
   产物（build/ 目录）：
     icon.ico        （16/24/32/48/64/128/256 共 7 帧，全部为 BMP/DIB 帧）
@@ -35,7 +42,7 @@
   用法：npm run icons  （build:main 前由 prebuild:main 自动调用一次）
 ================================================================================
 */
-import { deflateSync } from 'node:zlib';
+import { deflateSync, inflateSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -345,15 +352,190 @@ function drawIcon(size) {
   return out;
 }
 
+/* --------------------------------------------------- 图标源（用户提供的形象） */
+/*
+  2026-09-28 按用户要求：应用图标换成 mai.png（= 仓库里的 resources/hero.png，
+  1024×1040、8 位 RGBA）。这个文件是**唯一图标源**，下面所有帧（含 ICO）都由它派生。
+
+  为什么在纯 Node 里自己解码 PNG：
+    图标要在 build:main 之前由 npm 自动生成（可复现），而项目**不引图像库依赖**。
+    zlib 已经在用（写 PNG 用 deflateSync），读 PNG 只是多一个 inflateSync + 反滤波，
+    约百行，换来"构建不需要任何第三方二进制"。只支持 8 位、非隔行的 PNG —— 源图就是
+    这种格式；别的格式直接报错，不猜（见 decodePng 里的异常文案）。
+
+  缩放用"按面积平均 + 预乘 alpha"：
+    · 1024 → 16 是 64×65 个源像素压成 1 个，双线性会漏采样，面积平均最稳；
+    · 预乘 alpha 是为了边缘不发黑（透明像素的 RGB 通常是 0，不预乘会被平均进来）。
+*/
+const ICON_SOURCE = path.join(ROOT, 'resources', 'hero.png');
+
+function decodePng(buf) {
+  if (buf.length < 8 || buf.readUInt32BE(0) !== 0x89504e47) throw new Error('不是 PNG 文件');
+  let off = 8;
+  let width = 0;
+  let height = 0;
+  let depth = 0;
+  let colorType = 0;
+  let interlace = 0;
+  let palette = null;
+  let alphaTable = null;
+  const idat = [];
+  while (off + 8 <= buf.length) {
+    const len = buf.readUInt32BE(off);
+    const type = buf.toString('ascii', off + 4, off + 8);
+    const data = buf.subarray(off + 8, off + 8 + len);
+    if (type === 'IHDR') {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      depth = data[8];
+      colorType = data[9];
+      interlace = data[12];
+    } else if (type === 'PLTE') palette = Buffer.from(data);
+    else if (type === 'tRNS') alphaTable = Buffer.from(data);
+    else if (type === 'IDAT') idat.push(Buffer.from(data));
+    else if (type === 'IEND') break;
+    off += 12 + len;
+  }
+  if (depth !== 8) throw new Error(`图标源只支持 8 位 PNG，实际 ${depth} 位`);
+  if (interlace !== 0) throw new Error('图标源不支持隔行（Adam7）PNG');
+  const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[colorType];
+  if (!channels) throw new Error(`图标源不支持的色彩类型 ${colorType}`);
+
+  const raw = inflateSync(Buffer.concat(idat));
+  const stride = width * channels;
+  const rgba = Buffer.alloc(width * height * 4);
+  let prev = Buffer.alloc(stride);
+  let p = 0;
+  for (let y = 0; y < height; y += 1) {
+    const filter = raw[p];
+    p += 1;
+    const line = Buffer.from(raw.subarray(p, p + stride));
+    p += stride;
+    for (let i = 0; i < stride; i += 1) {
+      const a = i >= channels ? line[i - channels] : 0;
+      const b = prev[i];
+      const c = i >= channels ? prev[i - channels] : 0;
+      let v = line[i];
+      if (filter === 1) v += a;
+      else if (filter === 2) v += b;
+      else if (filter === 3) v += (a + b) >> 1;
+      else if (filter === 4) {
+        const pa = Math.abs(b - c);
+        const pb = Math.abs(a - c);
+        const pc = Math.abs(a + b - 2 * c);
+        v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      }
+      line[i] = v & 0xff;
+    }
+    prev = line;
+    for (let x = 0; x < width; x += 1) {
+      const s = x * channels;
+      const d = (y * width + x) * 4;
+      if (colorType === 6) {
+        rgba[d] = line[s];
+        rgba[d + 1] = line[s + 1];
+        rgba[d + 2] = line[s + 2];
+        rgba[d + 3] = line[s + 3];
+      } else if (colorType === 2) {
+        rgba[d] = line[s];
+        rgba[d + 1] = line[s + 1];
+        rgba[d + 2] = line[s + 2];
+        rgba[d + 3] = 255;
+      } else if (colorType === 0) {
+        rgba[d] = line[s];
+        rgba[d + 1] = line[s];
+        rgba[d + 2] = line[s];
+        rgba[d + 3] = 255;
+      } else if (colorType === 4) {
+        rgba[d] = line[s];
+        rgba[d + 1] = line[s];
+        rgba[d + 2] = line[s];
+        rgba[d + 3] = line[s + 1];
+      } else {
+        const pi = line[s] * 3;
+        rgba[d] = palette[pi];
+        rgba[d + 1] = palette[pi + 1];
+        rgba[d + 2] = palette[pi + 2];
+        rgba[d + 3] = alphaTable && line[s] < alphaTable.length ? alphaTable[line[s]] : 255;
+      }
+    }
+  }
+  return { width, height, rgba };
+}
+
+/** 面积平均缩放（预乘 alpha），输出 size×size */
+function resizeSquare(src, sw, sh, size) {
+  const out = Buffer.alloc(size * size * 4);
+  const sx = sw / size;
+  const sy = sh / size;
+  for (let y = 0; y < size; y += 1) {
+    const y0 = Math.floor(y * sy);
+    const y1 = Math.min(sh, Math.max(y0 + 1, Math.round((y + 1) * sy)));
+    for (let x = 0; x < size; x += 1) {
+      const x0 = Math.floor(x * sx);
+      const x1 = Math.min(sw, Math.max(x0 + 1, Math.round((x + 1) * sx)));
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let aSum = 0;
+      let n = 0;
+      for (let yy = y0; yy < y1; yy += 1) {
+        for (let xx = x0; xx < x1; xx += 1) {
+          const i = (yy * sw + xx) * 4;
+          const al = src[i + 3] / 255;
+          r += src[i] * al;
+          g += src[i + 1] * al;
+          b += src[i + 2] * al;
+          aSum += src[i + 3];
+          n += 1;
+        }
+      }
+      const o = (y * size + x) * 4;
+      const aAvg = aSum / n;
+      const w = aAvg / 255;
+      const clamp = (v) => (v > 255 ? 255 : v < 0 ? 0 : Math.round(v));
+      out[o] = w > 0 ? clamp(r / n / w) : 0;
+      out[o + 1] = w > 0 ? clamp(g / n / w) : 0;
+      out[o + 2] = w > 0 ? clamp(b / n / w) : 0;
+      out[o + 3] = clamp(aAvg);
+    }
+  }
+  return out;
+}
+
+/** 源图只解码一次（8 个尺寸 + 7 帧 ICO 都要用） */
+let SOURCE_IMAGE = null;
+function loadSourceImage() {
+  if (SOURCE_IMAGE === null) {
+    SOURCE_IMAGE = fs.existsSync(ICON_SOURCE) ? decodePng(fs.readFileSync(ICON_SOURCE)) : false;
+  }
+  return SOURCE_IMAGE || null;
+}
+
 /* ------------------------------------------------------------------ main */
 const PNG_SIZES = [16, 24, 32, 48, 64, 128, 256, 512];
 
 function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
+  /*
+    帧来源：优先用 resources/hero.png（用户指定的 mai.png 形象）；
+    源图不在时才回退到下面 drawIcon() 画的那根麦穗 —— 保留绘制代码是因为
+    "构建不该因为少一张图就断"，但它已经不是正常路径。
+  */
+  const source = loadSourceImage();
+  if (source) {
+    console.log(
+      `[icons] 图标源 ${path.relative(ROOT, ICON_SOURCE)}（${source.width}×${source.height} RGBA）→ 派生全部帧`
+    );
+  } else {
+    console.log(`[icons] 未找到 ${path.relative(ROOT, ICON_SOURCE)}，回退到内置绘制的麦穗图标`);
+  }
+  const frame = (size) => (source ? resizeSquare(source.rgba, source.width, source.height, size) : drawIcon(size));
+
   const pngs = {};
   for (const size of PNG_SIZES) {
-    const png = encodePng(size, size, drawIcon(size));
+    const png = encodePng(size, size, frame(size));
     pngs[size] = png;
     const file = path.join(OUT_DIR, `icon-${size}.png`);
     fs.writeFileSync(file, png);
@@ -372,7 +554,7 @@ function main() {
     少了 24 与 48，Windows 在"中等图标"视图下会拿 32 硬放大，边缘发糊。
   */
   const icoSizes = [16, 24, 32, 48, 64, 128, 256];
-  const frames = icoSizes.map((size) => ({ size, data: dibFrame(size, drawIcon(size)) }));
+  const frames = icoSizes.map((size) => ({ size, data: dibFrame(size, frame(size)) }));
   const ico = encodeIco(frames);
   fs.writeFileSync(path.join(OUT_DIR, 'icon.ico'), ico);
   console.log(

@@ -127,7 +127,16 @@ const NOTES = [
   '2. 安装完成后手动重新打开'
 ].join('\n');
 
-const TAG = 'v2.1.1';
+/*
+  假 Release 的 tag：必须**严格大于**当前版本，否则 D 段"有更新"那条断言必然失败。
+  所以不写死（旧版写死 'v2.1.1'，等到 package.json 也升到 2.1.1 时脚本就自己坏了），
+  改成按当前版本把**最后一段 +1**：2.1.1 → v2.1.1.1，2.1.1.1 → v2.1.1.2。
+  多段号也照此处理，正好覆盖四段号版本的比较路径。
+*/
+const TAG = `v${String(pkg.version)
+  .split('.')
+  .map((n, i, arr) => (i === arr.length - 1 ? Number(n) + 1 : Number(n)))
+  .join('.')}`;
 const CURRENT = `v${pkg.version}`;
 
 /** 各路由的行为由测试用例通过这个开关切换 */
@@ -257,7 +266,14 @@ section('A 语义化版本比较（compareVersions）');
     ['1.0.0-beta.2', '1.0.0-beta.1', 1, '预发布序号递增'],
     ['2.1', '2.1.0', 0, '缺省段按 0 处理'],
     ['2.1.0', '2.1.1', -1, '反向比较'],
-    ['v2.1.0+abc', '2.1.0', 0, '构建元数据不参与比较']
+    ['v2.1.0+abc', '2.1.0', 0, '构建元数据不参与比较'],
+    /* 四段版本号（本项目 2.1.1.1 这种补丁版就用它；旧实现只认三段，会判成"无法比较"） */
+    ['v2.1.1.1', 'v2.1.1', 1, '四段号：第四段更大就是更新'],
+    ['2.1.1', '2.1.1.1', -1, '四段号反向比较'],
+    ['2.1.1.1', '2.1.1.1', 0, '四段号相等'],
+    ['v2.1.1.0', '2.1.1', 0, '多出来的 0 段不改变大小'],
+    ['1.2.3.4.5', '1.2.3.4', 1, '任意段数都能逐段比较'],
+    ['1.2.3.4', '1.2.3.9', -1, '四段号比到最后一段']
   ];
   for (const [a, b, want, why] of cases) {
     const got = updater.compareVersions(a, b);
@@ -343,7 +359,7 @@ section('D check()（本地假 API）');
   chk('ok:true 且 configured:true', r.ok === true && r.configured === true);
   chk('current 来自 app.getVersion()', r.current === pkg.version, `${r.current}`);
   chk('latest 来自 tag_name', r.latest === TAG, r.latest);
-  chk('hasUpdate:true（2.1.1 > 2.1.0）', r.hasUpdate === true);
+  chk(`hasUpdate:true（${TAG} > ${CURRENT}）`, r.hasUpdate === true);
   chk('notes 原样带出（供界面按行渲染）', r.notes.includes('修复了下载通道切换'), `长度 ${r.notes.length}`);
   chk('asset 大小来自 Release 元数据', r.asset?.size === ASSET_SIZE, String(r.asset?.size));
   chk('asset 名字是 setup exe', /Setup/.test(r.asset?.name || ''), r.asset?.name);
