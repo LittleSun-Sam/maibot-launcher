@@ -1,0 +1,137 @@
+{
+  "name": "maibot-launcher",
+  "version": "2.1.1",
+  "private": true,
+  "description": "MaiBot Launcher —— 基于 Electron 的 MaiBot / SnowLuma 桌面管理器（进程托管、安装升级、日志聚合、AI 工具）",
+  "author": "MaiBot Launcher Contributors",
+  "copyright": "Copyright (C) 2026 MaiBot Launcher Contributors",
+  "license": "AGPL-3.0-or-later",
+  "main": "dist/main/main.cjs",
+  "build": {
+    "appId": "com.maibot.launcher",
+    "productName": "MaiBot Launcher",
+    "asar": true,
+    "npmRebuild": false,
+    "nodeGypRebuild": false,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/main/**/*",
+      "dist/preload/**/*",
+      "dist/renderer/**/*",
+      "package.json",
+      "LICENSE",
+      "NOTICE.md",
+      "NOTICE-TO-USER.md",
+      "THIRD_PARTY_NOTICES/**/*",
+      "!node_modules/**/*",
+      "node_modules/node-pty/**/*"
+    ],
+    "extraMetadata": {
+      "main": "dist/main/main.cjs"
+    },
+    "extraResources": [
+      {
+        "from": "build/icon.ico",
+        "to": "icons/icon.ico"
+      },
+      {
+        "from": "build/icon-256.png",
+        "to": "icons/icon-256.png"
+      },
+      {
+        "from": "build/tray.png",
+        "to": "icons/tray.png"
+      },
+      {
+        "from": "build/tray@2x.png",
+        "to": "icons/tray@2x.png"
+      },
+      {
+        "from": "resources/ansi-shim",
+        "to": "ansi-shim"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    }
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "icons": "node scripts/gen-icons.mjs",
+    "build:renderer": "vite build",
+    "prebuild:main": "node scripts/gen-icons.mjs",
+    "build:main": "node scripts/build-main.mjs --production",
+    "build": "npm run build:renderer && npm run build:main",
+    "dist": "npm run build && electron-builder",
+    "dist:fast": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
+    "start": "electron .",
+    "app": "node scripts/run.mjs",
+    "app:fresh": "node scripts/run.mjs --no-build --fresh",
+    "smoke": "npm run build && node scripts/smoke-test.mjs",
+    "selfcheck": "npm run build && node scripts/selfcheck.mjs",
+    "verify:ipc": "npm run build && node scripts/verify-ipc.mjs",
+    "verify:repo": "npm run build && node scripts/verify-repo-fallback.mjs",
+    "verify:onboarding": "node scripts/verify-onboarding.mjs",
+    "verify:deploy": "node scripts/verify-deploy-flow.mjs",
+    "verify:launch": "node scripts/verify-launch.mjs",
+    "verify:live": "node scripts/verify-live-start.mjs",
+    "verify:snowluma": "node scripts/verify-snowluma.mjs",
+    "verify:shell": "node scripts/verify-shell.mjs",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "verify": "npm run lint && npm run build && node scripts/verify-onboarding.mjs && node scripts/verify-launch.mjs && node scripts/verify-deps.mjs && node scripts/verify-identity.mjs && node scripts/verify-scan.mjs && node scripts/verify-download.mjs && node scripts/verify-hardening.mjs && node scripts/verify-snowluma.mjs && node scripts/verify-shell.mjs && node scripts/verify-live-start.mjs && node scripts/selfcheck.mjs && node scripts/verify-update.mjs && node scripts/verify-ipc.mjs && node scripts/verify-repo-fallback.mjs && node scripts/smoke-test.mjs && node scripts/verify-packaged-assets.mjs",
+    "verify:packaged": "node scripts/verify-packaged-assets.mjs",
+    "verify:deps": "node scripts/verify-deps.mjs",
+    "verify:scan": "node scripts/verify-scan.mjs",
+    "verify:download": "node scripts/verify-download.mjs",
+    "verify:update": "node scripts/verify-update.mjs",
+    "verify:update-ui": "npm run build && node scripts/verify-update-ui.mjs",
+    "verify:update-entry": "node scripts/verify-update-entry.mjs",
+    "verify:identity": "node scripts/verify-identity.mjs",
+    "verify:hardening": "node scripts/verify-hardening.mjs",
+    "rebuild:native": "electron-rebuild -f -w node-pty",
+    "clean": "node scripts/clean.mjs"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "vue": "^3.5.17",
+    "vue-router": "^4.6.4"
+  },
+  "optionalDependencies": {
+    "node-pty": "^1.1.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
+    "@eslint/js": "^9.39.4",
+    "@vitejs/plugin-vue": "^5.2.0",
+    "cross-env": "^10.1.0",
+    "electron": "^37.0.0",
+    "electron-builder": "^26.8.1",
+    "esbuild": "^0.21.5",
+    "eslint": "^9.39.4",
+    "eslint-plugin-vue": "^9.33.0",
+    "globals": "^15.15.0",
+    "vite": "^5.4.21"
+  }
+}

@@ -1,0 +1,110 @@
+# ==============================================================================
+# .gitignore —— MaiBot Launcher
+# ==============================================================================
+
+# ---------------------------------------------------------------- 依赖
+node_modules/
+.npm/
+
+# ---------------------------------------------------------------- 构建产物
+# 主进程/preload/esbuild 输出（dist/main、dist/preload）
+# 渲染进程 Vite 输出（dist/renderer）
+dist/
+# 旧构建产物目录名（历史上曾使用，保留忽略以防再次生成）
+dist-electron/
+renderer_out/
+release/
+*.log
+# 图标资源：build/ 下 12 个文件（icon.ico / icon.png / icon-16..512.png /
+# tray.png / tray@2x.png）**全部**由 scripts/gen-icons.mjs 生成，可逐字节复现。
+# 生成时机由 npm 生命周期保证：`npm run build` → `npm run build:main`
+# → 自动触发 `prebuild:main` → gen-icons.mjs。
+# electron-builder 通过 directories.buildResources / win.icon / nsis.*Icon
+# / extraResources 引用它，所以**打包前必须先跑 npm run build**
+# （`npm run dist` 已经这样串了；单独跑 electron-builder 会因缺图标失败）。
+build/
+
+# ---------------------------------------------------------------- 原生模块
+# node-pty 等原生依赖的编译中间产物
+**/build/Release/
+**/build/Debug/
+*.node
+!node_modules/**/*.node
+
+# ---------------------------------------------------------------- 编辑器 / 系统
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ---------------------------------------------------------------- 运行时数据
+# 应用运行期产生的数据（正常应在 userData，此处兜底防止误提交）
+maibot-data/
+*.asar
+
+# ---------------------------------------------------------------- 环境与密钥
+.env
+.env.local
+*.pem
+*.key
+
+# ==============================================================================
+# 考古层 —— 任何情况下都不要进版本库
+# ==============================================================================
+# 背景：一次清点发现 952 个"未跟踪且未被忽略"的文件，其中绝大多数是五轮 UI
+# 迭代留下的中间产物。它们的共同问题是：`git add -A` 一次就会全部进库，
+# 而它们既不是源码也不是产物 —— 是"旧真相的第二份副本"。
+# 这些规则的作用是把"随手 add 就进库"这条路堵掉。
+
+# 1) 多版本备份文件（.bak / .bak2 / .bak3 / .bak-<tag>）
+#    来源多为历史上一次性补丁脚本的自建备份（见 patch-v1-gate/ 的说明）。
+#    `*.bak[0-9]` 覆盖 .bak2..bak9 —— 实测 NOTICE.md 一路备份到了 .bak5，
+#    只写 .bak/.bak2/.bak3 会漏掉后两位。
+*.bak
+*.bak[0-9]
+*.bak-*
+
+# 2) 整目录的旧源码快照（曾入库 98 个文件，已 git rm --cached 撤出）
+backup/
+
+# 3) 一次性源码改写器：硬编码本机绝对路径 + 直接 writeFileSync 覆盖 src/**
+#    误跑一次就会用旧文本覆盖当前源码，仓库里不应存在可再次执行的改写器。
+patch-v1-gate/
+
+# 4) 审计过程中的截图 / 中间 json / 日志（体积大、随时可重新生成）
+docs/reference/audit/
+
+# 5) 临时探针脚本与它们的落盘产物（用完即弃）
+#    `_tmp-*` 不带斜杠 → 匹配任意层级：实测 src/main/services/ 下也被放了一个
+#    _tmp-procfix-process-prefix.cjs，只写 scripts/_tmp-* 会漏掉它。
+_tmp-*
+scripts/_probe-dump.txt
+
+# 6) 归档的历史探针（见 scripts/legacy/README.md）
+scripts/legacy/
+
+# 7) 逐轮 UI 迭代的一次性探针（同一功能的第 N 版，会持续被新建，
+#    所以按前缀忽略而不是逐个列名）
+scripts/ui5-*.mjs
+scripts/v4-verify-*.mjs
+scripts/v5-*.mjs
+scripts/audit-*.mjs
+scripts/ui3-*.mjs
+scripts/qa-installer.mjs
+scripts/toolbox-audit.mjs
+scripts/check-tokens.mjs
+# ---------------------------------------------------------------- 内部资料（2026-09 清理）
+# 公开仓库里不该出现的东西：UI 迭代截图、作废的改版任务书、内部流程审计与台账、
+# 一次性审计复现脚本。文件保留在本地工作区，只是不再进版本库。
+docs/reference/
+docs/_audit/
+docs/UI-BRIEF-*.md
+docs/UI-SPEC-*.md
+docs/SKILL-AUDIT.md
+docs/PATCH-V1-GATE-LEDGER.md
+# 一次性 CDP 探针脚本（用完即弃）
+scripts/probe-*.mjs
+mtverify.log
+mtverify.err.log

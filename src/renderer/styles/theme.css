@@ -1,0 +1,1307 @@
+/* ============================================================================
+ *  MaiBot Launcher · UI 设计层 v3 —— 主题 token（唯一配色来源）
+ * ============================================================================
+ *  依据：docs/UI-BRIEF-v3.md（参考物 DSH-X 启动器）
+ *  基调：无边框自绘标题栏 + 极淡渐变底 + 居中悬浮卡 + 单一蓝色强调 + 大量留白
+ *
+ *  导航结构（本文件的分段顺序）
+ *  --------------------------------------------------------------------------
+ *    A. :root                      浅色完整 token 表（默认，无需任何属性）
+ *    B. [data-theme="dark"]        深色覆盖层（只覆盖"值"，不覆盖名字）
+ *    C. :root[data-theme="light"]  显式浅色声明（防止只写 dark 覆盖层时，
+ *                                  某些元素落在深色继承链上出现"半深半浅"）
+ *    D. 基础元素 / 滚动条 / 减少动效
+ *    E. v1 别名表（页面仍在用旧 token 名，删了会静默失效）
+ *
+ *  为什么会有这三段（重要，别删）
+ *  --------------------------------------------------------------------------
+ *  CSS 自定义属性在**声明它的那条规则所命中的元素**上完成 var() 替换：
+ *  :root 里的 `--paper-full: var(--surface-1)` 是在 <html> 上按 <html> 当时
+ *  的 --surface-1 算出的。深色覆盖层只改 --surface-1 的值，不会把 :root 里
+ *  那条别名再算一遍 —— 别名会一直钉在浅色 #ffffff 上（"深色外壳里冒白卡"）。
+ *  所以别名一律写成 `:root, [data-theme='dark'], :root[data-theme='light']`
+ *  三选一选择器表（E1b）：同一份 var() 在三种主题状态下各命中一次、各算一遍。
+ *  A/B/C 三段里的 token 本体靠 var() 自动跟随，无需重复声明。
+ *
+ *  ⚠️ 严禁 `--x: var(--x)` 自引用：会形成变量环，CSS 在计算值阶段判为
+ *  无效，该 token 静默消失 —— 这是本项目反复踩过的坑（见 E 段注释）。
+ *
+ *  主题切换：手动，不跟随系统
+ *  --------------------------------------------------------------------------
+ *  只有 <html data-theme="light|dark"> 两种状态（由主进程 theme:get/theme:set
+ *  持久化）。刻意**不写** `@media (prefers-color-scheme: dark)`：
+ *  自动跟随会让"忘了写深色覆盖"的组件突然变成半深半浅，且用户无法自选。
+ *  app 挂载前若属性缺失，请由骨架层补 'light'（本文件也已默认成浅色）。
+ *
+ *  对比度：以下注释里的比值均按 WCAG 2.1 相对亮度公式实测（正文目标 ≥4.5:1）
+ * ==========================================================================*/
+
+:root {
+  /* ---------------------------------------------------------------- 字体 */
+  /* 中文优先雅黑 UI，西文 Segoe UI Variable；等宽用于路径/版本/日志 */
+  --font-ui: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui,
+    -apple-system, sans-serif;
+  --font-mono: 'Cascadia Mono', 'Consolas', 'Microsoft YaHei UI', ui-monospace, monospace;
+
+  /* 字号 / 行高成对绑定（Semi _font.scss 做法，避免"改了字号忘了行高"）
+   * UI v3 底座：正文 13/20、标题 15/600、标签 12/16 */
+  --fs-xs: 11px;
+  --lh-xs: 14px;
+  --fs-sm: 12px;
+  --lh-sm: 16px;
+  --fs-body: 13px;
+  --lh-body: 20px;
+  --fs-md: 13px;
+  --lh-md: 20px;
+  --fs-title: 15px;
+  --lh-title: 22px;
+  /* 字重上限 600：中文在 700 会糊 */
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-bold: 600;
+
+  color-scheme: light;
+
+  /* ------------------------------------------------------ 底 / 表面分层 */
+  /*
+    页面底：极淡蓝白渐变，左上偏亮。
+    v4（docs/UI-BRIEF-v4-imitate.md §1.2）逐字指定了三个色标与 160deg 角度：
+    linear-gradient(160deg,#f4f8ff 0%,#eaf2ff 48%,#e4eeff 100%)。
+    它比 v3 的两色标 135deg 版本更"蓝一点点"，正是目标图里那层几乎看不见的蓝。
+  */
+  --app-gradient: linear-gradient(160deg, #f4f8ff 0%, #eaf2ff 48%, #e4eeff 100%);
+  --surface-0: var(--surface-soft); /* 窗口底 = 渐变基色，兜底给 backgroundColor 用 */
+  --surface-1: #ffffff;
+  --surface-soft: #f7f9fc; /* 卡片（首页主卡 / 面板） */
+  --surface-2: var(--surface-soft); /* 次级：输入框、代码块底 */
+  --surface-3: #f1f5fb; /* hover 底、表头 */
+  --surface-inset: #f4f7fb; /* 凹陷区：日志列表底、详情折叠 */
+  /* UI v4 §1.3：首页卡里"版本选择框"的底，规格逐字给的 #f7f9fc。
+   * 单独一个 token 而不并进 --surface-2：日志/代码块也在用 --surface-2，
+   * 为了一张卡去调它会把别处的底一起改掉。 */
+  --surface-field: var(--surface-soft);
+  /* 1px 描边替代阴影分层（v3 的核心手法，不用玻璃模糊） */
+  --line: rgba(0, 0, 0, 0.08); /* 6% 太虚，卡片边缘"立不住"；8% 仍极浅但不飘 */
+  --line-strong: rgba(0, 0, 0, 0.14);
+  /* 阴影只两层，且只给浮起元素（首页卡 / 下拉 / toast） */
+  --shadow-1: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-2: 0 6px 20px rgba(0, 0, 0, 0.09);
+  /* UI v4：目标图首页那张卡是"淡蓝描边 + 蓝调阴影"，不是玻璃模糊 */
+  --card-line: var(--accent-tint); /* v5：原为写死 rgba(43,108,255,.06)，与 --accent 差一档色偏 */
+  /*
+    卡片阴影 = 双层：贴地一层勾出边缘，扩散一层给出体积。
+    只用单层大散射会显得"飘、薄"，像纸片 —— 这是"粗糙感"的主因之一。
+  */
+  --shadow-card:
+    0 1px 2px rgba(16, 24, 40, 0.05),
+    0 8px 24px rgba(16, 24, 40, 0.07);
+
+  /* 左下角 hero 插画（DSH-X 的位置）。换成自己的插画：放 resources/hero.png 即自动使用 */
+  --hero-opacity: 0.5;
+
+  /* ---------------------------------------------------------------- 文字 */
+  /* 全部在 #ffffff 卡片底与 #f8fbff 页底上实测，正文级 ≥4.5:1 */
+  --text-1: #1a1d21; /* 标题   白底 16.91:1 / 页底 16.30:1 */
+  --text-2: #3f454d; /* 正文   白底  9.68:1 / 页底  9.33:1 */
+  --text-3: #656b78; /* 次要   白卡 4.89:1 / 最差底（#f1f5fb）4.89:1 → 全底过 AA */
+  /* v5 修正：原值 #8a9099 实测白底只有 3.22:1、页底 3.10:1，不达 AA。
+   * 这一档在界面上承担的是"版本号 / 来源 / 日期 / 路径 / 空态提示"这类**元信息**，
+   * 用户要读，不是装饰；审计脚本在 8 个页面上一共报了 133 处，光下载页就 89 处。
+   * 取值必须对**所有底色**都过 4.5:1（页面不只白卡，还有 --surface-3 的 hover 底、
+   * --surface-inset 的日志列表底）：#6f747c 在 #f1f5fb 上只有 4.30:1（审计实测复现），
+   * 所以最终取 #6b7078（最差底 4.55:1）。
+   * ⚠️ 注意它现在与 --text-3 (#6b7280) 几乎同亮度，第四级墨色的层级差没了；
+   *    如果之后要恢复层级，应该把 --text-3 一起往下调，而不是把 --text-4 调回 3.2:1。
+   * 复算口径（每个候选在 6 种底上的**最差**比值）见文末"复核方法"第三步的内联命令。 */
+  --text-4: var(--text-3); /* 标签   白卡 4.98:1 / 最差底（#f1f5fb）4.55:1 */
+  --text-disabled: #b3b8bf; /* 禁用态，本身不承载信息 */
+
+  /* ------------------------------------------------------------ 强调色 */
+  /* 单一蓝色强调。v1 的 #66ccff 在浅底上只有 1.9:1，已彻底弃用 */
+  /*
+    v5 修正：#2b6cff 是"双向都差一点点"的值 ——
+      · 白字压它 4.48:1（AA 要 4.5，差 0.02）
+      · 它压白底 4.48:1 / 压页底 4.31:1（同样差一点）
+    也就是说它当中文色、当中按钮底、当图标色，**三种用法全都不达标**，
+    审计里 8 个页面报了 100+ 处（"1.2.5"版本号、"获取版本"按钮……）。
+    改成 #2760e8：同一支蓝只挪了一小档色相，但**所有底**都过关
+    （最差底 #f1f5fb 上 4.89:1，白卡 5.35:1），且当实底时白字 5.35:1，双向达标。
+    色号变化肉眼几乎看不出（同一支蓝），可复算：见文末"复核方法"第三步的内联对比度命令
+  */
+  --accent: #2760e8;
+  --accent-hover: #1f5ae0; /* 悬停加深一档（白字 5.84:1） */
+  --accent-active: #1a4fca;
+  --accent-deep: #3a6ad6; /* 需要白字且要过 4.5:1 的实底场景（白字 4.99:1） */
+  --on-accent: #ffffff; /* 实底强调色上的文字：白字 vs #2760e8 = 5.35:1（AA） */
+  --accent-tint: rgba(39, 96, 232, 0.1); /* hover tint */
+  /* UI v4：目标图里"淡蓝底 + 蓝字"的小控件（星形 pill / 齿轮 / 图标方钮）
+   * 用的都是这一档 10% 淡蓝。--accent-tint 与它同值 —— 之所以另起一个名字，
+   * 是为了让"目标图形态"与"通用 hover tint"以后能各自演化而不互相牵连。 */
+  --accent-tint-soft: var(--accent-tint);
+  --accent-tint-strong: rgba(39, 96, 232, 0.16);
+  --accent-line: rgba(39, 96, 232, 0.32);
+  /* 强调色"当文字用"的那一档（链接 / 蓝字）：= var(--accent-hover) #1f5ae0，
+     白底 5.84:1、压在选中态的 --accent-tint 淡蓝底（#e9effd）上 5.07:1，
+     两种底都过 4.5:1。填充仍用 --accent，两者色相相同、只差一档明度。
+     ⚠️ 本段原来在 --accent-line 之前还写过一条 `--accent-ink: #255cde;`（同块重复声明）。
+        按 CSS"后声明覆盖前声明"，那条**从未生效**（#255cde 白底 5.73:1 本身也达标，
+        但它不是实际生效值），已删。这里保留别名而不是字面量，是因为
+        AppLayout.vue / StatusBadge.vue / ToolboxPanel.vue / AboutPanel.vue 的注释
+        都按"浅色 --accent-ink = var(--accent-hover) 5.84:1"写，值必须一致。 */
+  --accent-ink: var(--accent-hover);
+  --focus-ring: 0 0 0 2px rgba(39, 96, 232, 0.35);
+
+  /* ------------------------------------------------------- 语义色（状态） */
+  /* 用法约定：--ok/--warn/--err 本体给 8px 状态点、图标、进度条（图形元素 ≥3:1）；
+   * 需要"彩色文字"时一律用 *-ink（≥4.5:1）；淡底用 *-tint + *-ink 组合 */
+  --ok: #1a9e5c; /* 运行中，白底 3.45:1（图形） */
+  --ok-tint: rgba(26, 158, 92, 0.1);
+  --ok-line: rgba(26, 158, 92, 0.3);
+  --ok-ink: #0f7a45; /* 白底 5.40:1，淡底 4.82:1 */
+  --warn: #c98a00; /* 启动中，白底 2.95:1（图形） */
+  --warn-tint: rgba(201, 138, 0, 0.12);
+  --warn-line: rgba(201, 138, 0, 0.32);
+  --warn-ink: #8a5d00; /* 白底 5.76:1，淡底 5.12:1 */
+  --err: #d64545; /* 错误，白底 4.38:1（图形） */
+  --err-tint: rgba(214, 69, 69, 0.1);
+  /* UI v4：目标图里的红色"停止"方钮 = 8% 淡红底 + 35% 红描边 + 红字形。
+   * --err-tint-strong 是这档淡红底的 hover（danger 按钮要有一档反馈） */
+  --err-tint-soft: rgba(214, 69, 69, 0.08);
+  --err-tint-strong: rgba(214, 69, 69, 0.14);
+  --err-line: rgba(214, 69, 69, 0.3);
+  --err-line-soft: rgba(214, 69, 69, 0.35);
+  --err-ink: #c02b2b; /* 白底 5.80:1，淡底 5.06:1 */
+  --stop: #8a9099; /* 已停止（中性灰点），白底 3.22:1（图形） */
+  --stop-tint: rgba(138, 144, 153, 0.12);
+  --stop-line: rgba(138, 144, 153, 0.32);
+  --info: #0b6bcb;
+  --info-tint: rgba(11, 107, 203, 0.09);
+  --info-ink: #0a5aa8; /* 白底 5.97:1 */
+
+  /*
+    Toast（右上角浮起提示）。
+    ────────────────────────────────────────────────────────────────────────────
+    它**故意两套主题都用深底**：toast 是浮在页面之上的临时层，深底在任何背板
+    上都能拉开距离（浅色主题里判"主题不匹配的深块"会把它报出来，属于已知例外）。
+    但"底一直是深的"这个前提以前没写下来，于是出过两个真 bug：
+      · background 硬编码 rgba(42,50,64,.92) —— 只调过一次，之后没人敢改；
+      · color: var(--paper-full) —— 浅色下正好是白色（看着对），
+        深色下 --paper-full = --surface-1 = #1c1f24，就成了"深灰字压深灰底"，
+        实测 1.2:1，整条提示等于消失。
+    所以把"面"和"面上的字/图标"都收成 token：面固定深，字固定亮，不跟主题翻转。
+    对比度实测口径见文末"复核方法"第三步（toast 的叠合底色值写在那一步里）。
+  */
+  --toast-bg: rgba(42, 50, 64, 0.92);
+  --toast-ink: #f2f5fa; /* 对 #333a47（toast 叠合色）实测 10.46:1 */
+  --toast-shadow: 0 6px 20px rgba(20, 30, 48, 0.22);
+  /* toast 上的状态图标：都在深底上，所以不能用 --ok-ink 这类"给浅底写的深色"
+     （实测 --ok-ink #0f7a45 压在 toast 上只有 2.12:1）。 */
+  --toast-ok-ink: #4ade80; /* 6.56:1 */
+  --toast-err-ink: #ff8f8f; /* 5.21:1 */
+  --toast-warn-ink: #ffc44d; /* 7.22:1 */
+  --toast-info-ink: #8fb6ff; /* 5.61:1 */
+
+  /* ---------------------------------------------------- 交互态（叠加） */
+  /* 低透明叠加而不是换色 / brightness()：在任何底色上都成立，且不破坏文字对比度 */
+  --fill-hover: rgba(26, 29, 33, 0.05);
+  --fill-active: rgba(26, 29, 33, 0.09);
+  --fill-selected: rgba(26, 29, 33, 0.13);
+  --fill-disabled: rgba(26, 29, 33, 0.04);
+
+  /*
+    v5 修正：--theme-color 原来**只**声明在 `:root[data-theme='light']` 里。
+    那是比 `[data-theme='dark']` 更高优先级的层，于是深色主题下它永远解析成
+    浅色的 --accent —— 终端页「新建终端」按钮在深色里就是
+    "浅蓝底 + 白字"，实测 3.69:1，而且它压根没跟着主题走。
+    这里挪到基础 :root：既然值就是 var(--accent)，就交给各主题自己的 --accent，
+    深色自然拿到 #5b8dff。浅色层里不再重复声明（免得又把深色锁回浅色）。
+
+    ⚠️ 光挪到这里还不够：AppLayout.syncTheme() 会把这个变量**内联**写到 <html>
+    上（内联优先级最高）。它原来写的是解析后的字面量，一样会把深色锁死 ——
+    那边已同步改成写 var(--accent) 引用，两处必须一起成立。详见该函数的注释。
+  */
+  --theme-color: var(--accent);
+
+  /*
+    开关滑块（ToggleSwitch 的圆钮）。
+    ⚠️ 它是**唯一一个刻意不跟主题翻转**的颜色，所以只在这里声明一次、
+    不在深色覆盖层里重写：滑块压在轨道上，而"关"状态的轨道两套主题分别是
+    深色叠加（浅色底）与白色叠加（深色底）。如果滑块跟着 surface 走
+    （原来用的 --paper-full = --surface-1），深色主题下就是"深灰钮压深灰轨"，
+    对比度约 1.6:1，整颗开关像坏掉；白色滑块在两套主题里都成立：
+    浅色轨道 #e0e1e3 上 16:1，深色轨道 #3b4148 上 12:1，开状态对
+    --accent 也有 3.1:1（图形元素 ≥3:1）。
+  */
+  --switch-knob: #ffffff;
+
+  /* ------------------------------------------------- 工具箱 / 面板内层 */
+  /* UI v4 巡检（工具箱三页）新增的一小组"容器底" token。
+   * 为什么新加而不复用 --surface-2/3：
+   *   这几个位置原来的写法是**半透明白**（rgba(255,255,255,.5~.9)），
+   *   本意是"在主体卡上再压一层更白的膜"。浅色下勉强成立，
+   *   深色下把整条 alpha 链合成出来是一块 #A9AAAC 的亮灰，于是（实测）：
+   *     · 页签栏底 #8A8B8D —— 未选中页签文字（--text-3）1.13:1
+   *     · stat 行底 #A9AAAC —— 行内标题 1.93:1、路径 2.00:1、文件数 1.30:1
+   *     · 输入框底 #E8E9E9 —— 框内文字 1.01:1（等于看不见）
+   *   这就是用户说的"白卡糊脸、文字显示不出来"。
+   *   透明度本身没法按主题翻转，所以必须换成"按主题给确定值"的 token。
+   *
+   * 命名按**角色**而不是按深浅：
+   *   --bar-bg         分段控件（页签栏）托盘底
+   *   --row-bg         列表行 / 气泡 / 代码块底
+   *   --row-bg-hover   同一行的 hover 底
+   *   --field-bg       输入类控件（input / textarea / select）
+   *   --field-bg-focus 输入类控件聚焦底
+   *   --seg-bg         分段按钮组托盘底（未选中档）
+   *   --seg-active-bg  分段按钮组选中档的"浮起"底
+   *   --modal-mask / --modal-shadow  模态遮罩与投影
+   *   --overlay-tint   中性叠加（徽章、思考过程块）：浅色压黑、深色压白
+   */
+  --bar-bg: var(--surface-inset);
+  --row-bg: var(--surface-1);
+  --row-bg-hover: var(--surface-3);
+  --field-bg: var(--surface-2);
+  --field-bg-focus: var(--surface-1);
+  --seg-bg: var(--surface-inset);
+  --seg-active-bg: var(--surface-1);
+  --seg-active-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --modal-mask: rgba(20, 30, 48, 0.32);
+  --modal-shadow: 0 18px 44px rgba(20, 30, 48, 0.2);
+  --overlay-tint: rgba(20, 30, 48, 0.05);
+
+  /* ---------------------------------------------------------------- 圆角 */
+  /* UI v4（目标图实测）：卡片 14 / 选择框与方形按钮 10 / 小控件 6 / 弹窗 14。
+   * 目标图里已经**没有胶囊**了 —— 星形「帮助」是 17px 的圆角矩形，不是 9999px。
+   * --r-pill 因此只留给滚动条 thumb 这类"真圆"的图形（见 __滚动条__ 段），
+   * 普通按钮一律走 --r-ctl（10px），不要再拿 --r-pill 做按钮。
+   * ⚠️ 这行原来写的是"（8px 兜底）"，而 --r-ctl 早就是 10px 了 —— 注释落后于值时，
+   *    照注释去写 8px 的调用方就会和全站按钮错开 2px（本轮已按实际值 10px 更正）。 */
+  --r-card: 14px;
+  --r-ctl: 10px;
+  --r-input: 10px;
+  --r-menu: 6px;
+  --r-modal: 14px;
+  --r-pill: 999px;
+  /* 目标图星形 pill 的高度是 34、圆角正好是高度的一半 —— 单独给个 token，
+   * 免得以后有人把 9999px 又写回按钮上 */
+  --r-pill-ctl: 12px;
+
+  /* ---------------------------------------------------------------- 尺寸 */
+  /* 三档高度对应目标图：小控件 28 / 常规控件与标题栏控件 34 / 选择框与方钮 42。
+   * ⚠️ 这行原来写的是"普通小按钮 26"，而 --h-ctl-sm 实际是 28（下一行的注释
+   *    记录了"原来 26 与 28 混用"这次统一）—— 两行注释互相打架，
+   *    取 26 的人会做出比全站矮 2px 的按钮。已按实际值 28 更正。 */
+  --h-sm: 24px;
+  --h-ctl-sm: 28px; /* 原来 26 与 28 混用，同一屏两种小控件高度会显得毛糙 */
+  --h-ctl: 34px;
+  --h-lg: 40px;
+  --h-ctl-lg: 42px;
+  /* 图标方块两档（目标图：齿轮 34×34 / 选择框右侧的方钮 42×42） */
+  --ico-ctl: 34px;
+  --ico-ctl-lg: 42px;
+  --ico-sm: 12px;
+  --ico: 16px;
+  --ico-lg: 20px;
+  --ico-xl: 24px;
+
+  /* ---------------------------------------------------------------- 间距 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  /* 列表行高三档：紧凑 28 / 常规 36 / 宽松 44 */
+  --row-compact: 28px;
+  --row: 36px;
+  --row-loose: 44px;
+
+  /* ---------------------------------------------------------------- 动效 */
+  /* 三档时长 + 两条标准缓动；不做装饰性循环动画。
+   * ⚠️ 这行原来写的是"150~var(--dur-base)"，但 --dur-fast 实际是 var(--dur-fast)（低于它自己写的下界）。
+   *    同一份注释里给出与值不符的范围，照它去写 transition 的人会写出
+   *    "和 token 不一样、也不在范围内"的第三个数（PillButton 里那串
+   *    var(--dur-slow) / var(--dur-base) 就是这么来的）。现在按实际三档描述。 */
+  --dur-fast: 120ms;
+  --dur: var(--dur-base);
+  --dur-slow: 260ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+
+  /* -------------------------------------------------- 标题栏（自绘） */
+  /* UI v4：目标图标题栏高 44px（原来是 40） */
+  --titlebar-h: 44px;
+  /* 关闭键 hover：红底白字 */
+  --close-hover-bg: #d64545;
+  --close-hover-ink: #ffffff;
+
+  /* -------------------------------------------------------------- 滚动条 */
+  --scroll-thumb: rgba(0, 0, 0, 0.22);
+  --scroll-thumb-hover: rgba(0, 0, 0, 0.36);
+
+  /* ------------------------------------------------------- 深色控制台 */
+  /* 日志/终端刻意保持深色（彩色日志是保留功能），中性深灰，不带蓝 */
+  --console-bg: #1b1d21;
+  --console-head: #232529;
+  --console-text: #d6d9de;
+  --console-muted: #9aa0a8;
+  --console-scroll-thumb: #3a3d42;
+}
+
+/* ============================================================================
+ *  B. 深色覆盖层
+ *  --------------------------------------------------------------------------
+ *  只覆盖"值"。值是别的 token 的别名不在这里重复 —— 别名统一在 E1b 用
+ *  三选一选择器表声明，各主题状态自己算一遍。
+ *  底 #15171b → #0f1114；卡片 #1c1f24；描边 rgba(255,255,255,.08)；强调 #5b8dff
+ * ==========================================================================*/
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --app-gradient: linear-gradient(135deg, #15171b 0%, #0f1114 100%);
+  --surface-0: #15171b; /* 渐变基色 */
+  --surface-1: #1c1f24; /* 卡片 */
+  --surface-2: #23272d; /* 次级：输入框 */
+  --surface-3: #292d34; /* hover 底、表头 */
+  --surface-inset: #101215; /* 凹陷区（比卡片更深） */
+  /* 深色下 #f7f9fc 会是一块刺眼的白，改用比卡片亮一档的深底 */
+  --surface-field: #23272d;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --shadow-1: 0 2px 8px rgba(0, 0, 0, 0.45);
+  --shadow-2: 0 6px 20px rgba(0, 0, 0, 0.55);
+  /* 深色下蓝调阴影会在深底上"消失"，所以改用中性黑阴影；描边也换成中性白叠加
+   * （白 8% 描边在深色卡片上是可见的，浅色那支蓝描边在深底上等于没有） */
+  --card-line: rgba(255, 255, 255, 0.08);
+  --shadow-card:
+    0 1px 2px rgba(0, 0, 0, 0.45),
+    0 10px 28px rgba(0, 0, 0, 0.5);
+  --hero-opacity: 0.28; /* 深色底上插画压更淡，避免抢字 */
+
+  /* 文字：#e8eaed / #c2c7ce / #8f959d / #8a9098（对 #1c1f24 卡片实测） */
+  --text-1: #e8eaed; /* 13.71:1（页底 14.89:1） */
+  --text-2: #c2c7ce; /*  9.72:1（页底 10.56:1） */
+  /* v5 修正：原值 #6f757d 实测只有 3.55:1（次级底 #23272d 上 3.23:1），不达 AA。
+   * 改成 #a0a6ae：卡片 6.12:1 / 页底 6.66:1 / 次级 5.58:1 / 最暗底 #292d34 上 5.24:1，
+   * 与浅色侧同一档（#656b78），两套主题的"第三级墨色"深浅对等。
+   * ⚠️ 必须比 --text-4 (#8f959d，最差 4.58:1) 更亮，否则三四级层级会塌。 */
+  --text-3: #a0a6ae; /*  6.12:1（页底 6.66:1 / 最差底 5.24:1） */
+  /* v5 修正：原值 #6f757d 实测只有 3.55:1（次级底 #23272d 上 3.23:1），不达 AA。
+   * 改成 #8f959d：卡片 5.47:1 / 页底 5.94:1 / 次级 4.97:1 / 最暗底 #292d34 上 4.58:1，
+   * 与浅色侧取的是同一档（#6b7280），两套主题的"第四级墨色"深浅对等。 */
+  --text-4: #8f959d; /*  5.47:1（页底 5.94:1 / 次级 4.97:1 / 最差 4.58:1） */
+  --text-disabled: #565b62;
+
+  --accent: #5b8dff;
+  --accent-hover: #7ba4ff; /* 深色下"加深一档"改为提亮一档（更醒目） */
+  --accent-active: #9ab9ff;
+  --accent-deep: #3a6ad6; /* 需要白字实底时用（白字 4.99:1）。深色下按钮改用
+                           * --on-accent 深墨字，所以这个值在深色里保持与浅色相同 */
+  /* 关键：深色实底按钮上的文字用深墨色，而不是白色 ——
+   * 白字 vs #5b8dff 只有 3.13:1（不达 AA）；#101216 vs #5b8dff = 5.27:1 */
+  --on-accent: #101216;
+  --accent-tint: rgba(91, 141, 255, 0.16);
+  /* 深色下"淡蓝底"要更实一点才看得见（8~10% 在深底上几乎不可见） */
+  --accent-tint-soft: rgba(91, 141, 255, 0.16);
+  --accent-tint-strong: rgba(91, 141, 255, 0.24);
+  --accent-line: rgba(91, 141, 255, 0.42);
+  /* 强调色"当文字用"的那一档（深底蓝字）：#7ba4ff。对深色卡片底 #1c1f24 实测 6.76:1，
+     压在更亮的次级底（--surface-3 #292d34）上仍有 5.66:1 —— 组件注释里沿用的
+     5.86:1 是同一区间里另一档深色底的取值，都远过 4.5:1。
+     ⚠️ 本段原来在 --accent-deep 之前还写过一条 `--accent-ink: #6997ff;`（同块重复声明），
+        被这条覆盖、**从未生效**，已删：深色下真正生效的蓝字一直是 #7ba4ff，
+        而 AppLayout / StatusBadge / ToolboxPanel 的注释引用的也正是它。
+     这里保留字面量而不像 A/C 段那样写 var(--accent-hover)：两者恰好同值，
+     但 #7ba4ff 是被三处注释钉住的"深色蓝字"，写成字面量不容易被顺手改漂。 */
+  --accent-ink: #7ba4ff;
+  --focus-ring: 0 0 0 2px rgba(91, 141, 255, 0.45);
+
+  /* 状态色：规格给的 #1a9e5c / #c98a00 / #d64545 在 #1c1f24 上分别是
+   * 4.79:1 / 5.60:1 / 3.77:1 —— 红色那个做文字不达 AA，所以深色统一提亮到
+   * 下面这组（绿、黄也跟着提，保证"同一个状态在两套主题里观感一致"） */
+  --ok: #3fbd7c; /* 6.91:1（页底 7.50:1） */
+  --ok-tint: rgba(63, 189, 124, 0.16);
+  --ok-line: rgba(63, 189, 124, 0.38);
+  --ok-ink: #5ecf95; /* 8.53:1，淡底 6.43:1 */
+  --warn: #e0aa3e; /* 7.86:1 */
+  --warn-tint: rgba(224, 170, 62, 0.16);
+  --warn-line: rgba(224, 170, 62, 0.38);
+  --warn-ink: #e5b455; /* 8.65:1，淡底 6.34:1 */
+  --err: #f0706a; /* 5.69:1（页底 6.19:1） */
+  --err-tint: rgba(240, 112, 106, 0.16);
+  --err-tint-soft: rgba(240, 112, 106, 0.14); /* 深色下的"淡红底" */
+  --err-tint-strong: rgba(240, 112, 106, 0.26); /* 深色下淡红底的 hover */
+  --err-line: rgba(240, 112, 106, 0.38);
+  --err-line-soft: rgba(240, 112, 106, 0.5); /* 深色下红描边（浅色的 35% 在深底上偏弱） */
+  --err-ink: #f58b85; /* 7.01:1，淡底 5.55:1 */
+  --stop: #8f959d; /* 5.47:1 */
+  --stop-tint: rgba(143, 149, 157, 0.16);
+  --stop-line: rgba(143, 149, 157, 0.38);
+  --info: #6ba6ff; /* 6.71:1 */
+  --info-tint: rgba(107, 166, 255, 0.16);
+  --info-ink: #8bbcff; /* 8.45:1 */
+
+  /* 叠加态：深色下用白叠加，浅色下用黑叠加 */
+  --fill-hover: rgba(255, 255, 255, 0.06);
+  --fill-active: rgba(255, 255, 255, 0.1);
+  --fill-selected: rgba(255, 255, 255, 0.14);
+  --fill-disabled: rgba(255, 255, 255, 0.05);
+
+  /* 工具箱/面板内层容器底（理由见 A 段同名 token 的长注释）。
+   * 深色下**不能**继续用"半透明白"：合成出来是 #A9AAAC 亮灰，
+   * 行内文字对比度掉到 1.3~2.0:1（实测）。这里改成比卡片深一档的实色。 */
+  --bar-bg: var(--surface-inset);
+  --row-bg: var(--surface-2);
+  --row-bg-hover: var(--surface-3);
+  --field-bg: var(--surface-2);
+  --field-bg-focus: var(--surface-3);
+  --seg-bg: var(--surface-2);
+  --seg-active-bg: var(--surface-3);
+  --seg-active-shadow: none; /* 深色下黑阴影不成立，靠 --seg-active-bg 提亮分层 */
+  --modal-mask: rgba(0, 0, 0, 0.55);
+  --modal-shadow: 0 18px 44px rgba(0, 0, 0, 0.6);
+  --overlay-tint: rgba(255, 255, 255, 0.06);
+
+  --close-hover-bg: #d64545; /* 白字 4.38:1（图形/强调块，非正文） */
+  --close-hover-ink: #ffffff;
+
+  /* 深色下滚动条 thumb 用白色叠加，黑 thumb 在深底上等于看不见 */
+  --scroll-thumb: rgba(255, 255, 255, 0.22);
+  --scroll-thumb-hover: rgba(255, 255, 255, 0.36);
+
+  /* 深色控制台在两套主题下都是深色，但深色外套下要再压一档，避免"灰块浮起" */
+  --console-bg: #121417;
+  --console-head: #191c20;
+  --console-scroll-thumb: #3f434a;
+}
+
+/* ============================================================================
+ *  C. 显式浅色声明
+ *  --------------------------------------------------------------------------
+ *  与 A 段同值，但选择器更具体（:root[data-theme='light'] 优先于 :root），
+ *  放在 B 段之后 —— 这样"用户手动选浅色"永远赢。没有它时，一旦某处给
+ *  <body>/<html> 加上了 data-theme，深色覆盖层就会整段生效，出现"半深半浅"。
+ * ==========================================================================*/
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --app-gradient: linear-gradient(160deg, #f4f8ff 0%, #eaf2ff 48%, #e4eeff 100%);
+  --surface-0: var(--surface-soft);
+  --surface-1: #ffffff;
+  --surface-2: var(--surface-soft);
+  --surface-3: #f1f5fb;
+  --surface-inset: #f4f7fb;
+  --surface-field: var(--surface-soft); /* 首页卡版本选择框的底（v4 §1.3） */
+  --line: rgba(0, 0, 0, 0.08); /* 6% 太虚，卡片边缘"立不住"；8% 仍极浅但不飘 */
+  --line-strong: rgba(0, 0, 0, 0.14);
+  --shadow-1: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-2: 0 6px 20px rgba(0, 0, 0, 0.09);
+  --card-line: var(--accent-tint); /* v5：原为写死 rgba(43,108,255,.06)，与 --accent 差一档色偏 */
+  /*
+    卡片阴影 = 双层：贴地一层勾出边缘，扩散一层给出体积。
+    只用单层大散射会显得"飘、薄"，像纸片 —— 这是"粗糙感"的主因之一。
+  */
+  --shadow-card:
+    0 1px 2px rgba(16, 24, 40, 0.05),
+    0 8px 24px rgba(16, 24, 40, 0.07);
+  --hero-opacity: 0.5;
+
+  --text-1: #1a1d21; /* 16.91:1 */
+  --text-2: #3f454d; /*  9.68:1 */
+  --text-3: #656b78; /*  4.89:1（最差底 #f1f5fb 上仍 4.89:1） */
+  /* 与上面浅色层保持同值：本层选择器优先级更高，漏改这里等于没改（v5 踩过两次） */
+  --text-4: var(--text-3); /* 白卡 4.98:1（最差底 4.55:1） */
+  --text-disabled: #b3b8bf;
+
+  /* 本层优先级最高，所有强调色必须与基础层同值 —— 只改一处等于没改（v5 踩过） */
+  --accent: #2760e8;
+  --accent-hover: #1f5ae0;
+  --accent-active: #1a4fca;
+  --accent-deep: #3a6ad6;
+  --on-accent: #ffffff;
+  --accent-tint: rgba(39, 96, 232, 0.1);
+  --accent-tint-soft: var(--accent-tint);
+  --accent-tint-strong: rgba(39, 96, 232, 0.16);
+  --accent-line: rgba(39, 96, 232, 0.32);
+  /* 与 A 段基础层同值（本层优先级更高，漏改这里等于没改）：
+     原在 --accent-line 之前还重写过一条字面量 `--accent-ink: #255cde;`，
+     被这条覆盖、从未生效，已删。 */
+  --accent-ink: var(--accent-hover);
+  --focus-ring: 0 0 0 2px rgba(39, 96, 232, 0.35);
+
+  /*
+    ⚠️ 这一层"故意不写"的东西，比写了的更容易被误改，记在这里：
+    · --theme-color / --toast 系列都不在本层重复声明。
+      --theme-color 见基础 :root 的说明（本层重复声明正是深色被锁死的元凶）。
+      --toast-bg / --toast-ink / --toast 各档 ink 是**主题无关**的一组值：toast 在
+      浅色主题里也是深色块（浮层要压得住页面），两套主题共用同一份，只声明一次。
+    · 如果以后想把 toast 改成"浅色主题下也浅"，正确做法是换成
+      surface 系列 / text 系列语义 token（中间**必须带空格**，见下条），
+      而不是在这里覆盖成浅色 —— 否则那几个"给深底选的亮色"（toast 的 ink 档）
+      会立刻变成白底浅字，约 2:1 全不可读。
+
+    ⚠️ 为什么上面非要强调"必须带空格"：
+       这两个 token 名原来紧挨着写，中间那个「星号紧跟斜杠」的组合
+       **提前把这条注释闭合了**。于是后面几行注释正文全变成了**活的 CSS**，
+       CSS 解析器把它当成"一条以分号结尾的声明"，顺手把紧跟其后的
+       `--ok: #1a9e5c;`（C 段显式浅色层）**一起吞掉**。
+       隐蔽之处：A 段 `:root` 也声明了同值的 `--ok`，所以界面上看不出坏 ——
+       但这正是本文件 486 行自己警告过的"漏改这一层等于没改"：
+       C 段的 `--ok` 已经处于"改了不生效"的状态。
+       esbuild 给过信号（CSS 语法错误 Expected ":"），
+       只是被当成"minify 的抱怨"忽略了。一个空格换掉一类隐患。
+
+    同类风险：CSS 注释里任何"星号紧跟斜杠"的地方都会提前闭合注释。
+    ⚠️ 写这条说明时我自己踩了三次：
+       第一次把两个 token 名紧挨着写；
+       第二次把这个坏组合当**例子**原样抄进来；
+       第三次又在句子里直接引用了那个符号。
+       三次都真的截断了注释 —— 第三次是靠构建里多出两条新 warning 才发现的。
+    → 本文件里要表达这个符号时，一律用「星号紧跟斜杠」这样的**文字描述**，
+      绝不写成字符本身。写通配路径与 glob 模式时同理。
+  */
+
+  --ok: #1a9e5c;
+  --ok-tint: rgba(26, 158, 92, 0.1);
+  --ok-line: rgba(26, 158, 92, 0.3);
+  --ok-ink: #0f7a45;
+  --warn: #c98a00;
+  --warn-tint: rgba(201, 138, 0, 0.12);
+  --warn-line: rgba(201, 138, 0, 0.32);
+  --warn-ink: #8a5d00;
+  --err: #d64545;
+  --err-tint: rgba(214, 69, 69, 0.1);
+  --err-tint-soft: rgba(214, 69, 69, 0.08);
+  --err-tint-strong: rgba(214, 69, 69, 0.14);
+  --err-line: rgba(214, 69, 69, 0.3);
+  --err-line-soft: rgba(214, 69, 69, 0.35);
+  --err-ink: #c02b2b;
+  --stop: #8a9099;
+  --stop-tint: rgba(138, 144, 153, 0.12);
+  --stop-line: rgba(138, 144, 153, 0.32);
+  --info: #0b6bcb;
+  --info-tint: rgba(11, 107, 203, 0.09);
+  --info-ink: #0a5aa8;
+
+  --fill-hover: rgba(26, 29, 33, 0.05);
+  --fill-active: rgba(26, 29, 33, 0.09);
+  --fill-selected: rgba(26, 29, 33, 0.13);
+  --fill-disabled: rgba(26, 29, 33, 0.04);
+
+  /* 工具箱/面板内层容器底。显式浅色段必须重写一遍：
+   * B 段（深色）改过的 token 不会在切回浅色时自动还原。 */
+  --bar-bg: var(--surface-inset);
+  --row-bg: var(--surface-1);
+  --row-bg-hover: var(--surface-3);
+  --field-bg: var(--surface-2);
+  --field-bg-focus: var(--surface-1);
+  --seg-bg: var(--surface-inset);
+  --seg-active-bg: var(--surface-1);
+  --seg-active-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --modal-mask: rgba(20, 30, 48, 0.32);
+  --modal-shadow: 0 18px 44px rgba(20, 30, 48, 0.2);
+  --overlay-tint: rgba(20, 30, 48, 0.05);
+
+  --close-hover-bg: #d64545;
+  --close-hover-ink: #ffffff;
+
+  --scroll-thumb: rgba(0, 0, 0, 0.22);
+  --scroll-thumb-hover: rgba(0, 0, 0, 0.36);
+
+  --console-bg: #1b1d21;
+  --console-head: #232529;
+  --console-scroll-thumb: #3a3d42;
+}
+
+/* ============================================================================
+ *  D. 基础元素
+ * ==========================================================================*/
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+/*
+  ⚠️ 高度链的最后一环，**不能删**：App.vue 的模板是
+  <div class="app-root"><AppLayout/></div>，而 AppLayout 的 .shell 用 height:100%。
+  百分比高度要求父级有确定高度：.app-root 没有规则时它是 height:auto，
+  于是 .shell 的 100% 解析失败、退化成"由内容撑开"。
+
+  后果不是"矮一点"，实测（1280×720 窗口、设置页 2199px 文档）：
+    · .shell 长到 2199px，把 body 一起顶出去 → 滚的是整个文档，
+      标题栏（含齿轮/窗口三键）被一起滚出视野；
+    · .body 的高度跟着内容走（scrollHeight == clientHeight == 2155），
+      内部滚动容器永远没有可滚高度，其上 position:sticky 的吸底保存栏
+      也随之失去意义（sticky 相对文档而不是内容区）；
+    · 日志页那种 .body-full（overflow:hidden）会被直接裁掉且无法触达。
+  这一条曾经缺失，是"所有页面都滚不动"的根因（见 src/main/windows.js 的
+  滚动可达性断言），修法就是把高度链接上，让 .body 成为唯一滚动容器。
+
+  ⚠️ 这条是**唯一声明点**：App.vue 的 <style scoped> 里原来又写了一遍同值的
+  `.app-root { height: 100% }`，两边注释都自称"根因" —— 于是"删掉哪一处"界面
+  都不报错，到底哪一处生效只能靠特异性去猜（scoped 的 `.app-root[data-v-*]`
+  比这里的 `.app-root` 高一级，实际是 App.vue 那条赢），属于无法验证的重复。
+  已收敛到本段：它和上面 html/body/#app 的 height:100% 在同一节，
+  而且比 App.vue 那条多一个 min-height:0（滚动链要用）。
+  App.vue 里只留一条"此处不需要"的注释，别再写回规则。
+*/
+.app-root {
+  height: 100%;
+  min-height: 0;
+}
+
+/*
+  文档层不滚：滚动一律交给 .body（.body-full 页面交给它内部的日志滚动区）。
+  不加这一条时，任何一处溢出的绝对定位元素都会让 <html> 长出第二条滚动条，
+  出现"整窗滚动 + 内容区滚动"的双滚动，标题栏也会跟着跑。
+*/
+body {
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text-2);
+  /* 极淡渐变底（token 化：深浅两套各自覆盖 --app-gradient） */
+  background-color: var(--surface-0);
+  background-image: var(--app-gradient);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 标题层级靠字重与颜色，不靠字号暴涨 */
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  color: var(--text-1);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-title);
+}
+h1 {
+  font-size: var(--fs-title);
+}
+h2 {
+  font-size: var(--fs-title);
+}
+h3 {
+  font-size: var(--fs-md);
+}
+
+/* 可选中文字白名单（日志、路径、密钥必须能复制） */
+code,
+pre,
+kbd,
+samp,
+.log-line,
+.result-path,
+.deps-log,
+.sl-cred-txt,
+.ins-path,
+.svc-sub,
+.mono {
+  font-family: var(--font-mono);
+  user-select: text;
+}
+
+/* 焦点可见：键盘可达性，统一 ring，而不是各组件自己写 outline。
+ * ⚠️ 这里**不能**顺手写 border-radius：焦点环是 box-shadow，它本来就跟随元素
+ * 自己的圆角；而这条规则一旦带 border-radius，就会在获得焦点的那一刻把元素
+ * 的形状改掉 —— 开关（999px 胶囊）和保存栏的「应用/取消」（999px）一按 Tab
+ * 就从圆角变成 10px 方角，看起来像"点一下就变形"。形状由组件自己决定。 */
+:focus-visible {
+  outline: none;
+  /*
+    ⚠️ 必须 !important。这里是全局最低优先级（0,1,0），而"选中/主操作"变体
+    （.menubar-item.active、.pill.v-solid、.swatch.on）自己写了 box-shadow（0,2,0），
+    会把这条焦点环整条盖掉 —— 实测：越是选中的控件越看不见焦点在哪。
+    可达性是底线，不允许被视觉变体覆盖。
+  */
+  box-shadow: var(--focus-ring) !important;
+}
+
+/* 滚动条：中性灰，不跟主题色染色（v1 的错误做法）。
+ * --scroll-thumb* 的值在上面 A/B/C 三段 palette 里按主题给了两套 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: var(--r-pill);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 尊重系统"减少动态效果"（v1 完全没有这条） */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: var(--dur-fast) !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: var(--dur-fast) !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================================
+ *  E. v1 别名表 —— 旧 token 名 → v3 值
+ *  --------------------------------------------------------------------------
+ *  页面（8 个 .vue，约 262 KB）仍在用 v1 名，**删了会静默失效**，所以保留。
+ *  两个铁律：
+ *    1. 只列 v3 里**没有**的旧名。已经同名的（--line / --line-strong / --ok* /
+ *       --warn* / --err* / --info-ink / --row* / --sp-* 等）绝不重写 ——
+ *       写成 `--x: var(--x)` 会形成变量环，CSS 判为无效，token 静默消失。
+ *    2. 别名必须用 `:root, [data-theme='dark'], :root[data-theme='light']`
+ *       这个**三选一选择器表**声明（E1b），让同一份 var() 在三种主题状态下
+ *       各算一遍。不要在 :root 里声明、再在 [data-theme='dark'] 里重写：
+ *       那样会出现"同名别名先按优先级覆盖、值却仍指向浅色"的坑。
+ *  页面迁移完成（grep 不到 v1 名）后，E1/E1b/E3 可整块删除。
+ * ==========================================================================*/
+
+/* ============================================================================
+ *  ⚠️⚠️ 零引用 token 的核实结论 —— 请先读这段再动手删任何 token
+ *  --------------------------------------------------------------------------
+ *  ⚠️ 本节数字**已实测**（方法见文末复核方法，注意必须**先剥掉 CSS 注释**
+ *     再统计 —— 否则本节自己写的这些 token 名会被当成声明，数字全错，
+ *     我第一次统计就踩了这个坑，226/54/40 与 223/51/37 两套数并存过）。
+ *
+ *     清理前（本次会话开始时的工作区）：
+ *        声明 226 个 · 全渲染层静态引用 174 个 · 静态零引用 54 个
+ *        （其中 14 个是活的，见下）· **真正零引用 40 个**
+ *     本次清理删除 12 条 v1 遗留别名后：
+ *        声明 214 个 · 静态引用 174 个 · 静态零引用 42 个
+ *        （其中 14 个是活的）· **真正零引用 28 个**
+ *
+ *  ⚠️ **这 54 个里至少有 14 个是活的**，用普通 `var(--x)` 或 grep 都查不到 ——
+ *     它们是**按字符串名字在运行期读取**的：
+ *
+ *     (1) `views/TerminalPanel.vue:192-218` 的 `read(name)` 辅助函数：
+ *         `getComputedStyle(document.documentElement).getPropertyValue(name)`
+ *         逐个读取 **全部 16 个 --ansi-\* + --term-bg / --term-fg /
+ *         --term-cursor-accent / --term-selection**，喂给 xterm.js 的 theme。
+ *     (2) `views/LogsPanel.vue:460/528/530`：
+ *         `var(--ansi-${ANSI_16[i]}, #c3ccd9)` —— 模板字符串拼出来的变量名，
+ *         ANSI_16 覆盖 black/red/…/bright-white 共 16 个名字。
+ *     (3) `main/windows.js:290-291`、`components/AppLayout.vue:1206-1212`：
+ *         `getPropertyValue('--theme-color')` / `setProperty('--theme-color'|'--theme-tint'|…)`。
+ *
+ *     → 所以**"grep 不到引用就删"这条经验在本文件上是错的**。
+ *       按静态结果删掉的后果不是报错，而是**静默失色**：xterm 的 16 色会被
+ *       回落到 `TERM_FALLBACK` 硬编码值，日志配色则落到 `#c3ccd9` 兜底 ——
+ *       界面看起来"还能用"，只是主题切换不再生效。这类缺陷没人会报 bug。
+ *
+ *  扣掉这 14 个之后，**真正零引用的是 28 个**，并且它们不是一类东西：
+ *  （后续 G4 修复删掉了 a) 里的 --route-download —— 它连整组 --route-* 一起被清，
+ *    见 E 段"每页一色"那段；所以 a) 现在列 27 个，上面这个 28 是当次清理时的口径。）
+ *
+ *     a) 设计刻度储备（**保留，这不是死代码**）—— 就是下面这 27 个：
+ *        · 图标六档：--ico / --ico-sm / --ico-lg / --ico-xl / --ico-ctl / --ico-ctl-lg
+ *        · 高度三档里没用到的两档 + 一个旧档：--h-sm / --h-lg / --h-ctl-lg
+ *        · 列表行高三档：--row / --row-compact / --row-loose
+ *        · 间距最大档：--sp-6
+ *        · 动效：--dur-slow / --ease-out / --ease-slide
+ *        · 字体：--fw-normal / --lh-xs / --lh-md
+ *        · 语义色：--info / --info-ink / --stop-tint
+ *        · 强调色两档：--accent-active / --accent-deep
+ *        · 其它：--r-modal / --text-disabled / --field-bg-focus
+ *          （原还有一条 --route-download，已随 --route-* 整组删除 —— 见 E 段）
+ *        这些是**成套刻度里暂时没被用到的那几档**。删掉它们会让刻度残缺，
+ *        下次要用时只能重新写死字面量 —— 那才是真的屎山。
+ *        审计 R-14 把这类和真正的 v1 遗留混在一起数（说"45 个零引用 token"），
+ *        结论偏严：其中大部分是**有意的设计刻度**，且至少 14 个还是活的。
+ *
+ *     b) 真·v1 遗留（**本次已删 12 条**，见下方各删除点的注释）：
+ *        --ui-font、--app-bg、--card-bg-solid、--paper-near、--theme-footer、
+ *        --theme-scrollbar、--theme-scrollbar-hover、--err-solid、--err-soft、
+ *        --err-tint-soft-v4、--info-bg、--console-faint
+ *        判据：**静态与动态都零引用**，且满足以下任一条 ——
+ *        · 名字带版本后缀（--err-tint-soft-v4）；
+ *        · 与另一个仍在用的名字**完全同值**（--card-bg-solid vs --card-bg、
+ *          --paper-near vs --paper-full：都是 var(--surface-1)）；
+ *        · **语义已经错了**（--err-soft 指向中性灰 --stop，见下）；
+ *        · 过不了对比度门槛且没人用（--console-faint 只有 2.66:1）。
+ *
+ *  复核方法（改完 theme.css 后请重跑；输出顺序是"声明 / 静态引用 / 静态零引用"）：
+ *    ⚠️ 上面那组快照（…214 / 42 / 28）是**当次清理时**的数。后续 v5 与本次 G4
+ *       修复都动过 token，重跑得到的是新数（G4 修复后实测 228 / 182 / 49）。
+ *       把它当成"必须复现的断言"会每次报一个假警报 —— 正是本文件反复在修的那类注释。
+ *    ⚠️ **第一步必须先剥掉 CSS 注释**，否则本节文字里的 token 名会被算成声明。
+ *       Node 一行版（在仓库根执行，输出"声明/静态引用/静态零引用/"）：
+ *
+ *         node -e "const fs=require('fs'),g=require('path');const R='src/renderer';const css=fs.readFileSync(R+'/styles/theme.css','utf8').replace(/\/\*[\s\S]*?\*\//g,'');const d=new Set([...css.matchAll(/^\s*(--[\w-]+)\s*:/gm)].map(m=>m[1]));const u=new Set();(function w(p){for(const e of fs.readdirSync(p,{withFileTypes:true})){const f=g.join(p,e.name);if(e.isDirectory())w(f);else if(/\.(vue|js|css)$/.test(e.name)&&!/\.bak/.test(e.name)){for(const m of fs.readFileSync(f,'utf8').matchAll(/var\(\s*(--[\w-]+)/g))u.add(m[1]);}}})(R);console.log('声明',d.size,'/ 静态引用',u.size,'/ 静态零引用',[...d].filter(x=>!u.has(x)).length);"
+ *
+ *    第二步列动态读取点（这些名字**不在**上面的静态引用里，绝不能删）：
+ *      `grep -rn "getPropertyValue(\|setProperty(" src/`
+ *      以及 `TerminalPanel.vue` 里的 `read('--…')` 名单。
+ *
+ *    第三步：对比度复算。本文件原来有 3 处注释（--text-4 / 浅色 --accent 候选 /
+ *      toast 那一组）指向 `scripts/legacy/ui5-final-colors.mjs` 与
+ *      `scripts/legacy/ui5-toast.mjs`。**这两个脚本本地确实存在**（1701 / 1270 字节，
+ *      内容就是下面这套公式），但 `scripts/legacy/` 被 .gitignore 第 86 行整目录忽略、
+ *      从未入库 —— 所以对"克隆出来的仓库"而言它们是死链，指向它们等于不可复核。
+ *      改成不依赖任何脚本的内联口径（在仓库根执行；6 种底与那个脚本里的一致，
+ *      输出每个候选的**最差**比值）：
+ *
+ *        node -e "const f=v=>{v/=255;return v<=0.03928?v/12.92:((v+0.055)/1.055)**2.4},L=h=>{const c=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));return .2126*f(c[0])+.7152*f(c[1])+.0722*f(c[2])},cr=(a,b)=>(Math.max(L(a),L(b))+.05)/(Math.min(L(a),L(b))+.05);for(const c of ['#2a67f5','#2760e8','#255ce0','#2357d6','#1f5ae0','#1a4fca'])console.log(c, Math.min(...['#f8fbff','#ffffff','#fbfcfe','#f1f5fb','#f4f7fb','#f7f9fc'].map(b=>cr(c,b))).toFixed(2))"
+ *
+ *      实测输出（#2760e8 = 4.89，与上面 --accent 的注释一致）：
+ *        #2a67f5 4.41 / #2760e8 4.89 / #255ce0 5.21 / #2357d6 5.64 /
+ *        #1f5ae0 5.34 / #1a4fca 6.37
+ *      toast 那一组的"底"是 rgba 叠合后的实测值：浅色 #333a47（#2a3240 @.92 压在
+ *      #f8fbff 上）、深色 #1b1e23（#1b1f26 @.92 压在 #15171b 上），把这两个色号
+ *      换进上面命令的底列表即可复算 --toast-* 各档。
+ *
+ *  只要第二步出现新名字，第一步的"零引用"结论就要重新算一遍。
+ * ==========================================================================*/
+
+/* --- E1 与主题无关的别名（纯映射，不需要按主题重复） ------------------- */
+/*
+  ⚠️ 这一段原来只有一条 `--ui-font: var(--font-ui);`，**已整条删除**。
+  理由：全渲染层零引用（静态 grep 不到，也不在任何 getPropertyValue/setProperty
+  的字符串名单里 —— 见本段顶部那段核实结论）。它是一条 v1→v3 迁移期的
+  兼容别名，迁移早已完成，留下的只有"读代码的人以为有个 --ui-font 会被用到"。
+
+  这里**故意不再保留一个空的 `:root { }`**：空规则块同样是"看起来有条规则、
+  实际什么也没做"，属于本次清理要消掉的那类噪声。以后需要新增
+  "与主题无关的别名"时，直接在此处加一个 `:root { … }` 即可，
+  标题保留就是为了留住这个位置。
+
+  要恢复 --ui-font：`npx` 不需要，直接在 E1b 的
+  `:root, [data-theme='dark'], :root[data-theme='light']` 表里加回
+  `--ui-font: var(--font-ui);` 即可（它不依赖主题 palette，放 :root 也行）。
+*/
+
+/* --- E1c 标题栏专用色（产品名 / 窗口字形） ----------------------------- */
+/*
+  UI v4（docs/UI-BRIEF-v4-imitate.md §1.1）：目标图标题栏左上角的产品名是
+  **加粗的亮蓝**（19px），不是正文黑 —— 那是整条标题栏最显眼的
+  一块颜色，直接用 --text-1 写会把"像不像"做没。
+
+  为什么用三选一选择器表（与 E1b 同一个理由）：它的值是"当前主题的强调蓝"
+  （浅 #2760e8 / 深 #5b8dff）。只声明在 :root 里的话，深色主题下这条
+  var() 会一直钉在浅色那支蓝上；浅色蓝在深色底 #1c1f24 上只有 2.4:1 上下，
+  基本看不清，所以必须按主题各算一遍。
+  ⚠️ 同理见 AppLayout.syncTheme()：它内联写到 <html> 的 --theme-color 必须是
+  var() 引用而非字面量，否则这里按主题算的功夫全部作废。
+
+  窗口三键的字形色单独给个名字，是因为它比 --text-4 深一档（--text-3 同值）：
+  目标图里那三个字形要"看得见但不出声"，用 token 命名而不是在组件里写死灰。
+*/
+:root,
+[data-theme='dark'],
+:root[data-theme='light'] {
+  --titlebar-ink: var(--accent);
+  --titlebar-glyph: var(--text-3);
+}
+
+/* --- E1b 值依赖主题 palette 的别名：一次声明，三个主题状态各自求值 ------ */
+:root,
+[data-theme='dark'],
+:root[data-theme='light'] {
+  --ink-strong: var(--text-1);
+  --ink: var(--text-2);
+  --ink-soft: var(--text-3);
+  --ink-faint: var(--text-4);
+
+  --card-bg: var(--surface-1);
+  --paper: var(--surface-1);
+  --paper-solid: var(--surface-1);
+  --paper-full: var(--surface-1);
+  --neutral-tint: var(--fill-active);
+  /*
+    ⚠️ 本段删掉的 4 条 alias（原有 5 条同义别名都指向 --surface-1，只有 2 条真被用）：
+      --app-bg:        var(--surface-0)   —— 零引用
+      --card-bg-solid: var(--surface-1)   —— 零引用，且与 --card-bg 完全同值
+      --paper-near:    var(--surface-1)   —— 零引用，与 --paper-full 完全同值
+      保留的是真有引用的 --card-bg / --paper / --paper-solid / --paper-full
+      （分别被 PanelCard、onboarding、PillButton、VersionPicker/AboutPanel/LogsPanel 用到）。
+    "同一块面有 5 个名字"是 v1→v3 迁移的典型残留：迁移完成后 3 个名字没人用，
+    却让每个新页面在选 token 时多面对 3 个无法区分的选项。
+    要恢复任意一条：在下面 :root, [data-theme='dark'], :root[data-theme='light']
+    这个表里按原名写回即可（它们不依赖主题，值都一样）。
+  */
+
+  --radius-lg: var(--r-card); /* 卡片 14（v4） */
+  --radius-md: var(--r-input); /* 输入/下拉/小面板 10（v4） */
+  --radius-sm: var(--r-ctl); /* 按钮 10（v4） */
+
+  /* 注意：--theme-color 已在基础 :root 声明为 var(--accent)，
+     这里**不要再**写一遍 —— 它会把深色主题重新锁回浅色蓝（v5 修的 bug）。 */
+  --theme-tint: var(--accent-tint);
+  --theme-line: var(--accent-line);
+  /*
+    ⚠️ 已删（均零引用）：
+      --theme-footer:            var(--accent-tint)  —— 没有任何"footer"在用它
+      --theme-scrollbar:         var(--scroll-thumb) —— 滚动条直接走 --scroll-thumb
+      --theme-scrollbar-hover:   var(--scroll-thumb-hover)
+    滚动条真正的两个 token 是 --scroll-thumb / --scroll-thumb-hover，
+    而 theme.css 的 __滚动条__ 段在用它们 —— 这两条 --theme-scrollbar* 是
+    迁移期留下的第二套名字，删掉后"滚动条颜色改哪里"才只有一个答案。
+  */
+
+  /* 语义色族里 v3 未定义（或需要按主题给深/浅墨色）的那部分 */
+  --ok-ink-strong: var(--ok-ink);
+  --ok-bg: var(--ok-tint);
+  --ok-bg-strong: var(--ok-tint);
+  --ok-line-strong: var(--ok-line);
+  --warn-ink-strong: var(--warn-ink);
+  --warn-ink-deep: var(--warn-ink);
+  --warn-bg: var(--warn-tint);
+  --warn-bg-strong: var(--warn-tint);
+  --warn-line-strong: var(--warn-line);
+  --warn-line-bright: var(--warn-line);
+  --err-ink-strong: var(--err-ink);
+  --err-bg: var(--err-tint);
+  --err-bg-strong: var(--err-tint);
+  --err-line-bright: var(--err-line-soft);
+  --err-line-strong: var(--err-line);
+  --danger: var(--err);
+  --danger-bg: var(--err-tint);
+  --danger-bg-hover: var(--err-tint-strong); /* v4：hover 要在深浅两套里都真的"加深一档" */
+
+  /*
+    ⚠️⚠️ 本段删掉的三条里，`--err-soft` 是**本次审计发现的语义错误**，不只是死代码：
+        --err-soft: var(--stop);
+    它把一个"error 的柔和版"映射到了 `--stop`（已停止）——而那是个**中性灰**
+    （浅 #8a9099 / 深 #8f959d）。也就是说：谁按名字用 `--err-soft`，谁就会得到
+    灰色而不是淡红，而且**没有任何报错**，只是"红色提示条不红"。
+    今天没出事只因为它恰好零引用。这类"名字与值方向相反"的别名比死代码更危险，
+    删掉是唯一安全解 —— 留着它，等于把那个坑留给下一个读名字选 token 的人。
+
+    同时删除的另两条（均零引用）：
+      --err-solid:          var(--err)          —— 用 --err 更直白，多一层别名无收益
+      --err-tint-soft-v4:   var(--err-tint-soft)
+        ↑ 这条尤其值得记：它的引入注释（原 826-828 行）声称"AppLayout 的提示条 /
+          recover.js 的兜底弹层要的是更淡的红底 + 更实的红边"，并为此**新给了
+          一个带 -v4 后缀的名字**。但实测两个文件用的都是 `--err-tint-soft`
+          （已在全渲染层引用清单里），没人用 `--err-tint-soft-v4`。
+          即：**注释描述的是当时的计划，代码后来直接用了旧名** —— 别名白建了。
+          注释与实现不符的又一例（本次审计共 16 处）。
+
+    要恢复：在下面这个三选一选择器表里按原名写回；但若真要恢复 `--err-soft`，
+    请先把它的值改成 `--err-tint`，不要再指回 `--stop`。
+  */
+  /* ⚠️ --info-bg: var(--info-tint) 也已删（零引用）。info 族真正的名字是
+     --info / --info-tint / --info-ink；多一个 -bg 别名只会让选 token 的人
+     在两个同义名字之间犹豫。 */
+
+  /* toast：面与字都不跟主题翻转，已在基础 :root 声明；这里不再覆盖
+     （原来是 --toast-ok-ink: var(--ok-ink)，那是给浅底写的深绿，压在深底上 2.12:1） */
+
+  /* 各类"提示文字"统一到 warn ink */
+  --hint-warn-ink: var(--warn-ink);
+  --note-warn-ink: var(--warn-ink);
+  --field-warn-ink: var(--warn-ink);
+
+  /* 性能条：单一强调色系，不再是随机彩色 */
+  --perf-bar-cpu-low: var(--accent);
+  --perf-bar-mem-low: var(--accent-ink);
+
+  /*
+    ⚠️ 这里原有 8 条"每页一个颜色"的令牌 —— --route-overview / -installer /
+    -download / -logs / -terminal / -toolbox / -settings / -about，**已整组删除**。
+    （v1 的"彩虹导航"早被 v3 的"单一蓝色强调"取代，令牌却留了下来，靠的是一条
+    自欺的引用链：）
+      · 静态 grep 查得到"引用" —— 名字被写在 router/index.js 的 meta.color 字符串里
+        （'var(--route-overview)' …），看着像有人在用；
+      · 但真正的消费者 AppLayout.syncTheme() 从 v5 起**不再读 meta.color**：它直接写
+        `--theme-color / --theme-tint / --theme-line = var(--accent…)`（见该函数注释），
+        浏览器里再没有任何 getPropertyValue 会解析这几个名字。
+    所以这 8 条属于"grep 得到、其实已死"的一类 —— 正是本节"零引用 token 的核实结论"
+    那段经验的镜像：静态统计会把**字符串引用**算成活的，必须再确认有没有真实计算值读取。
+    清理是双侧的：router/index.js 里的 meta.color 已同步删除（只留 title / icon / full）。
+    要恢复"每页一色"，先把 color 加回 router 的 meta、并让 syncTheme() 真的读它 ——
+    只加 token 而不接消费方，就又是一条静默死链。
+    ⚠️ --route-ink / --route-tint 是另外两个**还活着**的名字（syncTheme 内联写
+    var(--accent) / var(--accent-tint)），不在这次删除范围内，别顺手一起删。
+  */
+
+  --term-cursor-accent: var(--term-bg);
+  --term-selection: var(--accent-tint-strong);
+  --term-hover-ink: var(--err-ink);
+  --term-hover-bg: var(--err-tint);
+
+  --ease-slide: var(--ease);
+}
+
+/* --- E3 深色控制台：两套主题下都是深色，token 名固定 --------------------- */
+:root,
+[data-theme='dark'],
+:root[data-theme='light'] {
+  --console-title: #e6e8eb; /* 13.75:1（深色外套下 15.03:1） */
+  --console-foreground: var(--console-text); /* #d6d9de，11.93:1 / 13.04:1 */
+  --console-muted-dim: #868c94; /* 4.98:1 / 5.44:1 */
+  --console-muted-faint: #6e747c; /* 3.58:1 / 3.91:1，次要元信息 */
+  /* ⚠️ 这里原有 --console-faint: #5a6068（2.66:1 / 2.91:1，注释写"装饰/分隔"）。
+     已删：全渲染层零引用，且它对面的分隔线本来就用 --console-outline（那个有引用）。
+     一个 2.66:1 的"颜色"如果不承载信息又没人用，留着只会诱导以后有人拿它当文字色
+     —— 而它**过不了任何对比度门槛**。要恢复请连带想清楚它到底给谁用。 */
+  --console-outline: rgba(255, 255, 255, 0.08);
+  --console-outline-soft: rgba(255, 255, 255, 0.07);
+  --console-tint: rgba(255, 255, 255, 0.08);
+  --console-scrollbar: var(--console-scroll-thumb);
+  --console-scrollbar-hover: #4a4e54;
+
+  --term-bg: var(--console-bg);
+  --term-fg: var(--console-text);
+  --term-empty-ico: #4a4e54;
+  --term-empty-title: #9aa0a8;
+  --term-switch-off: #50555c;
+
+  /* ANSI 16 色：日志/终端着色，**不要动** —— 关系到彩色日志能否看清 */
+  --ansi-black: #3a3d42;
+  --ansi-red: #e0554a;
+  --ansi-green: #42b072;
+  --ansi-yellow: #d9a13c;
+  --ansi-blue: #4c9be8;
+  --ansi-magenta: #a98bdd;
+  --ansi-cyan: #3fb0c4;
+  --ansi-white: #d6d9de;
+  --ansi-bright-black: #6e747c;
+  --ansi-bright-red: #ff8b80;
+  --ansi-bright-green: #7ee2ad;
+  --ansi-bright-yellow: #ffd27a;
+  --ansi-bright-blue: #8ec9ff;
+  --ansi-bright-magenta: #c9b0ee;
+  --ansi-bright-cyan: #8fdce8;
+  --ansi-bright-white: #f0f2f5;
+}
+
+/* ==========================================================================
+   工艺令牌（apple-design §15 / §16.7 / §12）—— 合并版，全站唯一一套
+   --------------------------------------------------------------------------
+   字号阶梯（唯一真源，不再有第二套）：
+     2xs 10 · xs 11 · sm 12 · body 13 · md 13 · title 15 · lg 17 · xl 19
+   行高与字距跟字号绑定（§15）：
+     行高与字号反向（小字松、大字紧）；字距小字为正、大字为负。
+     原有的 --lh-* 是 px 值，语义正确且已被组件引用，因此保持不动，
+     新档位沿用同一套 px 口径，避免单位混用。
+   ========================================================================== */
+:root {
+  /* 新增字号档：原有五档（xs/sm/body/md/title）保持不变，此处只补缺口 */
+  --fs-2xs: 10px;
+  --lh-2xs: 14px;
+  --ls-2xs: 0.01em;
+
+  --fs-lg: 17px;
+  --lh-lg: 22px;
+  --ls-lg: -0.01em;
+
+  --fs-xl: 19px;
+  --lh-xl: 24px;
+  --ls-xl: -0.015em;
+
+  /* 字距：既有档位也要有，否则"字距跟字号走"落不了地 */
+  --ls-xs: 0.008em;
+  --ls-sm: 0.005em;
+  --ls-body: 0;
+  --ls-md: 0;
+  --ls-title: -0.005em;
+
+  /* 统一时序（既有的 --dur-fast/--dur-slow/--ease-out 保留，这里只补缺的两个） */
+  --dur-base: 180ms;
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* --------------------------------------------------------------------------
+   §15 基准字号。
+   根上原本没有字号声明，凡未显式写字号的文字都按浏览器默认 16px 渲染，
+   于是同一屏既有 13px 也有 16px —— 字体层次乱的直接来源。
+   -------------------------------------------------------------------------- */
+body {
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  letter-spacing: var(--ls-body);
+}
+
+/* --------------------------------------------------------------------------
+   §1 响应：反馈发生在按下瞬间。用 transform（不参与布局，不会挤动邻居）。
+   低优先级兜底，组件自己的类会覆盖它。
+   -------------------------------------------------------------------------- */
+button,
+[role='button'],
+.btn {
+  transition:
+    transform var(--dur-fast) var(--ease-standard),
+    background-color var(--dur-base) var(--ease-standard),
+    color var(--dur-base) var(--ease-standard),
+    border-color var(--dur-base) var(--ease-standard),
+    box-shadow var(--dur-base) var(--ease-standard);
+}
+button:not(:disabled):active,
+[role='button']:not([aria-disabled='true']):active,
+.btn:not(.is-disabled):active {
+  transform: scale(0.97);
+}
+
+/* --------------------------------------------------------------------------
+   §12 标题栏材质：去掉 1px 硬分隔线，改成内容贴到浮动界面时的渐变遮罩。
+   -------------------------------------------------------------------------- */
+/*
+  §12 材质令牌：从已有的 --surface-0 派生（浅色 #f7f9fc / 深色 #15171b），
+  所以浅色与深色自动各自成立 —— 不新增第二套令牌，也不需要再写一份主题分支。
+*/
+:root {
+  --titlebar-material: color-mix(in srgb, var(--surface-0) 76%, transparent);
+  --titlebar-blur: blur(20px) saturate(180%);
+  /* 顶部一道高光：光打在材质上（SKILL §12 的 bright top edge） */
+  --titlebar-edge: rgb(255 255 255 / 55%);
+  --titlebar-mask: linear-gradient(to bottom, rgb(16 24 40 / 8%), rgb(16 24 40 / 0%));
+  /* §7：可逆过渡的镜像曲线 —— cubic-bezier(.2,.8,.2,1) 的反向控制点 */
+  --ease-standard-in: cubic-bezier(0.8, 0, 0.8, 0.2);
+}
+[data-theme='dark'] {
+  --titlebar-edge: rgb(255 255 255 / 8%);
+  --titlebar-mask: linear-gradient(to bottom, rgb(0 0 0 / 38%), rgb(0 0 0 / 0%));
+}
+
+.titlebar {
+  /* 半透明底 + 模糊：结构感来自材质，而不是一根实心条 */
+  background: var(--titlebar-material);
+  backdrop-filter: var(--titlebar-blur);
+  -webkit-backdrop-filter: var(--titlebar-blur);
+  box-shadow: inset 0 1px 0 var(--titlebar-edge) !important;
+  border-bottom: 0 !important;
+}
+.titlebar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 10px;
+  pointer-events: none;
+  background: var(--titlebar-mask);
+  /* 静止在顶部时不显示：那时内容与 chrome 并不重叠 */
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease-standard);
+}
+.shell.is-scrolled .titlebar::after {
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------------------
+   §14 无障碍：三个独立信号各给各的降级。
+   减少动效 ≠ 去掉反馈：保留透明度与颜色变化，只去掉位移与弹性。
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: var(--dur-fast) !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: var(--dur-fast) !important;
+    scroll-behavior: auto !important;
+  }
+  .menu-slide-enter-from,
+  .menu-slide-leave-to {
+    transform: none !important;
+  }
+}
+
+/*
+  §14：深浅切换要"缓一下"，不能瞬跳到另一个亮度。
+  只在切换的那一刻由脚本给 <html> 挂上，320ms 后摘掉 ——
+  平时不影响任何交互过渡；首次落主题与 prefers-reduced-motion 下根本不挂。
+*/
+html.theme-fading * {
+  transition:
+    background-color var(--dur-slow) var(--ease-standard),
+    border-color var(--dur-slow) var(--ease-standard),
+    color var(--dur-slow) var(--ease-standard) !important;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  /*
+    §14：这不是"把 blur 关掉"就算降级 —— 半透明层被强制不透明时，
+    底下的内容会透不出来，必须同时把底色补成实色，否则文字压在模糊内容上更难读。
+    改的是令牌本身，浅色/深色一起生效（不再写两份主题分支）。
+  */
+  :root {
+    --titlebar-material: var(--surface-0);
+    --titlebar-blur: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --line: rgba(0, 0, 0, 0.3);
+    --line-strong: rgba(0, 0, 0, 0.45);
+  }
+  /* 必须写成 :root[data-theme='dark']：上一条规则里的 :root[data-theme] 是同级 (0,2,0)，
+     若这里只写 [data-theme='dark'](0,1,0) 会被自己压住 —— 第一版就是在深色下出了黑线 */
+  :root[data-theme='dark'] {
+    --line: rgba(255, 255, 255, 0.34);
+    --line-strong: rgba(255, 255, 255, 0.48);
+  }
+}
+
+
+/* --------------------------------------------------------------------------
+   圆角阶梯的角色分工（免得 6/8/10/12/14 被当成随手值）
+     --r-menu  6px   小片：徽标、标签、菜单项这类"贴在别人身上"的小面
+     8px            嵌套内层：外槽 12px、内距 3px 时，内层 8px 才是同心的
+                     （外 12 − 内距 3 × 2 ≈ 6，取 8 保证肉眼同心；全站仅此用途）
+     --r-ctl   10px  控件：按钮、输入框、下拉，所有可点的东西都走这一档
+     --r-pill-ctl 12px 外槽与滚动条拇指：分段控件槽、滚动条
+     --r-card  14px  卡片与面板：承载内容的容器
+     --r-pill  999px 真胶囊：仅圆形/滚动条等确实是圆的图形，不要拿它做按钮
+   规则：同级用同一档；嵌套时内层必须比外层小，否则折角会"咬"出来。
+   -------------------------------------------------------------------------- */
+
+
+/* --------------------------------------------------------------------------
+   高对比收尾覆盖（高对比收尾覆盖）
+   上一轮实测发现：@media (prefers-contrast: more) 里用 :root 定义 --line 不生效，
+   因为主题作用域的 [data-theme] 选择器优先级更高，把它压住了。
+   修法不是加 !important，而是用同级的、放在文件末尾的选择器 —— 靠层叠顺序赢，
+   这样将来有人调整主题块也不会因为我这条 !important 而调不动。
+   -------------------------------------------------------------------------- */
+@media (prefers-contrast: more) {
+  :root,
+  :root[data-theme],
+  [data-theme='light'],
+  [data-theme='dark'] {
+    --line: rgba(0, 0, 0, 0.3);
+    --line-strong: rgba(0, 0, 0, 0.45);
+  }
+  /* 必须写成 :root[data-theme='dark']：上一条规则里的 :root[data-theme] 是同级 (0,2,0)，
+     若这里只写 [data-theme='dark'](0,1,0) 会被自己压住 —— 第一版就是在深色下出了黑线 */
+  :root[data-theme='dark'] {
+    --line: rgba(255, 255, 255, 0.34);
+    --line-strong: rgba(255, 255, 255, 0.48);
+  }
+}
+
+/* 深色下 --surface-soft 必须也有暗值：现在没有东西引用它，
+   但留着"深色作用域里躺着一个浅色值"迟早会出事 */
+[data-theme='dark'] {
+  --surface-soft: #15171b;
+}
